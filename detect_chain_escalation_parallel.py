@@ -92,7 +92,8 @@ def run_aws_cli(cmd, profile=None, retries=0):
                     delay = min(BACKOFF_MAX, BACKOFF_BASE * (BACKOFF_FACTOR ** retries))
                     print(f"[WARN] AWS API throttling detected, retrying in {delay:.1f}s ({retries+1}/{MAX_RETRIES})")
                     time.sleep(delay)
-                    return run_aws_cli(cmd, retries + 1)
+                    # Pass the profile parameter in the recursive call
+                    return run_aws_cli(cmd, profile=None, retries=retries + 1)
                 else:
                     print(f"[ERROR] AWS API throttling limit reached after {MAX_RETRIES} retries")
             
@@ -105,20 +106,21 @@ def run_aws_cli(cmd, profile=None, retries=0):
         return parsed_result
     except subprocess.TimeoutExpired:
         API_STATS["timeouts"] += 1
-        print(f"[WARN] AWS CLI command timed out: {' '.join(cmd)}")
+        print(f"[WARN] AWS CLI command timed out: {' '.join(str(x) for x in cmd)}")
         
         # Retry with backoff for timeouts
         if retries < MAX_RETRIES:
             delay = min(BACKOFF_MAX, BACKOFF_BASE * (BACKOFF_FACTOR ** retries))
             print(f"[INFO] Retrying after timeout in {delay:.1f}s ({retries+1}/{MAX_RETRIES})")
             time.sleep(delay)
-            return run_aws_cli(cmd, retries + 1)
+            # Pass the profile parameter in the recursive call
+            return run_aws_cli(cmd, profile=None, retries=retries + 1)
             
         AWS_CLI_CACHE[cmd_key] = None
         return None
     except json.JSONDecodeError:
         API_STATS["errors"] += 1
-        print(f"[ERROR] Invalid JSON response from AWS CLI: {' '.join(cmd)}")
+        print(f"[ERROR] Invalid JSON response from AWS CLI: {' '.join(str(x) for x in cmd)}")
         AWS_CLI_CACHE[cmd_key] = None
         return None
 
