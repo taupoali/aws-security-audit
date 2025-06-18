@@ -505,27 +505,34 @@ def find_chains(graph, profile=None):
 
 
 # Function to generate visualization of escalation paths
-def generate_visualization(chains, graph, output_file="escalation_paths.html"):
+def generate_visualization(chains, graph, cross_account_findings=None, output_file="escalation_paths.html"):
     try:
         # Simple HTML visualization
         html = """
         <!DOCTYPE html>
         <html>
         <head>
-            <title>AWS IAM Privilege Escalation Paths</title>
+            <title>AWS IAM Privilege Escalation Analysis</title>
             <style>
                 body { font-family: Arial, sans-serif; margin: 20px; }
                 .chain { margin-bottom: 20px; padding: 10px; border: 1px solid #ddd; }
                 .node { display: inline-block; padding: 5px 10px; margin: 5px; background-color: #f0f0f0; border-radius: 5px; }
                 .arrow { display: inline-block; margin: 0 5px; }
                 .privileged { background-color: #ffcccc; }
+                .cross-account { background-color: #ffffcc; }
+                .section { margin-top: 30px; }
+                table { border-collapse: collapse; width: 100%; }
+                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                th { background-color: #f2f2f2; }
             </style>
         </head>
         <body>
-            <h1>AWS IAM Privilege Escalation Paths</h1>
+            <h1>AWS IAM Privilege Escalation Analysis</h1>
             <p>Generated on: """ + datetime.now().strftime("%Y-%m-%d %H:%M:%S") + """</p>
         """
         
+        # Add privilege escalation chains section
+        html += '<div class="section">'
         if chains:
             html += f"<h2>Found {len(chains)} privilege escalation chains</h2>"
             for i, chain in enumerate(chains):
@@ -538,6 +545,20 @@ def generate_visualization(chains, graph, output_file="escalation_paths.html"):
                 html += '</div>'
         else:
             html += "<h2>No privilege escalation chains found</h2>"
+        html += '</div>'
+        
+        # Add cross-account findings section
+        if cross_account_findings:
+            html += '<div class="section">'
+            html += f"<h2>Found {len(cross_account_findings)} roles with cross-account trust relationships</h2>"
+            html += '<table>'
+            html += '<tr><th>Role Name</th><th>External Principals</th></tr>'
+            
+            for role_name, principals in cross_account_findings.items():
+                html += f'<tr><td>{role_name}</td><td>{", ".join(principals)}</td></tr>'
+            
+            html += '</table>'
+            html += '</div>'
             
         html += """
         </body>
@@ -568,6 +589,23 @@ def export_to_csv(chains, output_file="escalation_chains.csv"):
         return output_file
     except Exception as e:
         print(f"[ERROR] Failed to export to CSV: {e}")
+        return None
+
+# Function to export cross-account findings to CSV
+def export_cross_account_to_csv(findings, output_file="cross_account_findings.csv"):
+    try:
+        with open(output_file, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(["Role Name", "External Principals"])
+            
+            for role_name, principals in findings.items():
+                writer.writerow([
+                    role_name,
+                    ", ".join(principals)
+                ])
+        return output_file
+    except Exception as e:
+        print(f"[ERROR] Failed to export cross-account findings to CSV: {e}")
         return None
 
 # Progress bar function for console output
@@ -641,22 +679,41 @@ print(f"Timeouts: {API_STATS['timeouts']}")
 print(f"Errors: {API_STATS['errors']}")
 print(f"Success rate: {((API_STATS['calls'] - API_STATS['timeouts'] - API_STATS['errors']) / max(1, API_STATS['calls']) * 100):.1f}%")
 
-print(f"\n[SUMMARY] Roles analyzed: {len(filtered_roles)}, Graph nodes: {len(graph)}, Chains found: {len(chains)}")
+print(f"\n[SUMMARY] Roles analyzed: {len(filtered_roles)}, Graph nodes: {len(graph)}, Chains found: {len(chains)}, Cross-account findings: {len(cross_account_findings)}")
 
+# Display chain results
 if chains:
     print(f"[RESULT] Detected {len(chains)} privilege escalation chain(s):\n")
     for chain in chains:
         print("  " + " -> ".join(chain))
-    
-    # Generate additional outputs if requested
-    if args.output in ["csv", "all"]:
+
+# Display cross-account findings summary if any
+if cross_account_findings:
+    print(f"\n[RESULT] Detected {len(cross_account_findings)} roles with cross-account trust relationships")
+
+# Generate additional outputs if requested
+if args.output in ["csv", "all"]:
+    # Export chains if any
+    if chains:
         csv_file = export_to_csv(chains)
         if csv_file:
-            print(f"\n[INFO] Results exported to CSV: {csv_file}")
+            print(f"\n[INFO] Chain results exported to CSV: {csv_file}")
     
-    if args.output in ["html", "all"]:
-        html_file = generate_visualization(chains, graph)
-        if html_file:
-            print(f"\n[INFO] Visualization generated: {html_file}")
-else:
+    # Export cross-account findings if any
+    if cross_account_findings:
+        cross_account_csv = export_cross_account_to_csv(cross_account_findings)
+        if cross_account_csv:
+            print(f"[INFO] Cross-account findings exported to CSV: {cross_account_csv}")
+
+if args.output in ["html", "all"]:
+    html_file = generate_visualization(chains, graph, cross_account_findings)
+    if html_file:
+        print(f"\n[INFO] Visualization generated: {html_file}")
+
+# Show message if no findings
+if not chains and not cross_account_findings:
+    print("[RESULT] No privilege escalation chains or cross-account trust relationships found.")
+elif not chains:
     print("[RESULT] No privilege escalation chains found.")
+elif not cross_account_findings:
+    print("[RESULT] No cross-account trust relationships found.")
