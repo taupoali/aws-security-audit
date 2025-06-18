@@ -63,7 +63,11 @@ BACKOFF_MAX = 5     # Maximum 5s delay
 BACKOFF_FACTOR = 1.5  # Increase by 50% each retry
 MAX_RETRIES = 3     # Maximum 3 retries
 
-def run_aws_cli(cmd, retries=0):
+def run_aws_cli(cmd, profile=None, retries=0):
+    # Add profile if specified
+    if profile:
+        cmd = ["aws", "--profile", profile] + cmd[1:]
+    
     # Convert command list to tuple for hashing
     cmd_key = tuple(cmd)
     
@@ -119,9 +123,13 @@ def run_aws_cli(cmd, retries=0):
         return None
 
 
-def get_account_id():
+def get_account_id(profile=None):
+    cmd = ["aws", "sts", "get-caller-identity", "--query", "Account", "--output", "text"]
+    if profile:
+        cmd = ["aws", "--profile", profile] + cmd[1:]
+    
     result = subprocess.run(
-        ["aws", "sts", "get-caller-identity", "--query", "Account", "--output", "text"],
+        cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         text=True
@@ -129,9 +137,9 @@ def get_account_id():
     return result.stdout.strip()
 
 
-def get_all_roles():
+def get_all_roles(profile=None):
     print("[INFO] Fetching IAM roles...")
-    result = run_aws_cli(["aws", "iam", "list-roles"])
+    result = run_aws_cli(["aws", "iam", "list-roles"], profile)
     if not result:
         print("[ERROR] Failed to fetch IAM roles.")
         return {}
@@ -140,27 +148,27 @@ def get_all_roles():
     return roles
 
 
-def get_trust_policy(role_name):
-    result = run_aws_cli(["aws", "iam", "get-role", "--role-name", role_name])
+def get_trust_policy(role_name, profile=None):
+    result = run_aws_cli(["aws", "iam", "get-role", "--role-name", role_name], profile)
     if not result:
         return None
     return result["Role"]["AssumeRolePolicyDocument"]
 
 
-def get_inline_policies(role_name):
-    result = run_aws_cli(["aws", "iam", "list-role-policies", "--role-name", role_name])
+def get_inline_policies(role_name, profile=None):
+    result = run_aws_cli(["aws", "iam", "list-role-policies", "--role-name", role_name], profile)
     if not result:
         return []
     policies = []
     for policy_name in result["PolicyNames"]:
-        p = run_aws_cli(["aws", "iam", "get-role-policy", "--role-name", role_name, "--policy-name", policy_name])
+        p = run_aws_cli(["aws", "iam", "get-role-policy", "--role-name", role_name, "--policy-name", policy_name], profile)
         if p:
             policies.append(p["PolicyDocument"])
     return policies
 
 
-def get_attached_policies(role_name):
-    result = run_aws_cli(["aws", "iam", "list-attached-role-policies", "--role-name", role_name])
+def get_attached_policies(role_name, profile=None):
+    result = run_aws_cli(["aws", "iam", "list-attached-role-policies", "--role-name", role_name], profile)
     if not result:
         return []
     
@@ -194,21 +202,21 @@ def get_attached_policies(role_name):
             continue
             
         # For other AWS managed policies, fetch them normally
-        pv = run_aws_cli(["aws", "iam", "get-policy", "--policy-arn", arn])
+        pv = run_aws_cli(["aws", "iam", "get-policy", "--policy-arn", arn], profile)
         if not pv:
             continue
         ver_id = pv["Policy"]["DefaultVersionId"]
-        pd = run_aws_cli(["aws", "iam", "get-policy-version", "--policy-arn", arn, "--version-id", ver_id])
+        pd = run_aws_cli(["aws", "iam", "get-policy-version", "--policy-arn", arn, "--version-id", ver_id], profile)
         if pd:
             policies.append(pd["PolicyVersion"]["Document"])
     
     # Process customer managed policies
     for arn in customer_managed:
-        pv = run_aws_cli(["aws", "iam", "get-policy", "--policy-arn", arn])
+        pv = run_aws_cli(["aws", "iam", "get-policy", "--policy-arn", arn], profile)
         if not pv:
             continue
         ver_id = pv["Policy"]["DefaultVersionId"]
-        pd = run_aws_cli(["aws", "iam", "get-policy-version", "--policy-arn", arn, "--version-id", ver_id])
+        pd = run_aws_cli(["aws", "iam", "get-policy-version", "--policy-arn", arn, "--version-id", ver_id], profile)
         if pd:
             policies.append(pd["PolicyVersion"]["Document"])
     
@@ -229,9 +237,9 @@ def extract_actions(policy_doc):
     return actions
 
 
-def can_assume(source, target, account_id):
+def can_assume(source, target, account_id, profile=None):
     target_arn = f"arn:aws:iam::{account_id}:role/{target}"
-    for policy in get_inline_policies(source) + get_attached_policies(source):
+    for policy in get_inline_policies(source, profile) + get_attached_policies(source, profile):
         statements = policy.get("Statement", [])
         if not isinstance(statements, list):
             statements = [statements]
@@ -248,8 +256,8 @@ def can_assume(source, target, account_id):
     return False
 
 
-def trust_allows(source, target, account_id):
-    trust = get_trust_policy(target)
+def trust_allows(source, target, account_id, profile=None):
+    trust = get_trust_policy(target, profile)
     if not trust:
         return False
     for stmt in trust.get("Statement", []):
@@ -279,12 +287,12 @@ def trust_allows(source, target, account_id):
     return False
 
 
-def is_privileged(role_name):
+def is_privileged(role_name, profile=None):
     findings = set()
     
     # Get policies
-    inline_policies = get_inline_policies(role_name)
-    attached_policies = get_attached_policies(role_name)
+    inline_policies = get_inline_policies(role_name, profile)
+    attached_policies = get_attached_policies(role_name, profile)
     
     for policy in inline_policies + attached_policies:
         actions = extract_actions(policy)
@@ -320,13 +328,17 @@ def is_privileged(role_name):
     return is_admin
 
 
-def check_cross_account_trust(role_name):
+def check_cross_account_trust(role_name, account_id=None, profile=None):
     """Check if a role can be assumed by principals in other accounts"""
     cross_account_trusts = []
-    trust = get_trust_policy(role_name)
+    trust = get_trust_policy(role_name, profile)
     
     if not trust:
         return []
+    
+    # Use provided account_id or global ACCOUNT_ID
+    if account_id is None:
+        account_id = ACCOUNT_ID
         
     for stmt in trust.get("Statement", []):
         if stmt.get("Effect") != "Allow":
@@ -338,16 +350,16 @@ def check_cross_account_trust(role_name):
         aws_principal = principal.get("AWS")
         if aws_principal:
             if isinstance(aws_principal, str):
-                if aws_principal == "*" or (aws_principal.startswith("arn:aws:iam::") and not aws_principal.startswith(f"arn:aws:iam::{ACCOUNT_ID}:")):
+                if aws_principal == "*" or (aws_principal.startswith("arn:aws:iam::") and not aws_principal.startswith(f"arn:aws:iam::{account_id}:")):
                     cross_account_trusts.append(aws_principal)
             elif isinstance(aws_principal, list):
                 for p in aws_principal:
-                    if p == "*" or (p.startswith("arn:aws:iam::") and not p.startswith(f"arn:aws:iam::{ACCOUNT_ID}:")):
+                    if p == "*" or (p.startswith("arn:aws:iam::") and not p.startswith(f"arn:aws:iam::{account_id}:")):
                         cross_account_trusts.append(p)
     
     return cross_account_trusts
 
-def build_graph_parallel(role_names, account_id, max_workers=None, batch_size=100):
+def build_graph_parallel(role_names, account_id, profile=None, max_workers=None, batch_size=100):
     # Use command line args if provided, otherwise use defaults
     if max_workers is None:
         max_workers = args.max_workers if 'args' in globals() and hasattr(args, 'max_workers') else 8
@@ -362,12 +374,12 @@ def build_graph_parallel(role_names, account_id, max_workers=None, batch_size=10
     def check_pair(source, target):
         if source == target:
             return None
-        if can_assume(source, target, account_id) and trust_allows(source, target, account_id):
+        if can_assume(source, target, account_id, profile) and trust_allows(source, target, account_id, profile):
             return (source, target)
         return None
         
     def check_role_cross_account(role_name):
-        trusts = check_cross_account_trust(role_name)
+        trusts = check_cross_account_trust(role_name, account_id, profile)
         if trusts:
             return (role_name, trusts)
         return None
@@ -455,7 +467,7 @@ def build_graph_parallel(role_names, account_id, max_workers=None, batch_size=10
     return {"graph": graph, "cross_account_findings": cross_account_findings}
 
 
-def find_chains(graph):
+def find_chains(graph, profile=None):
     chains = []
     privileged_roles = {}  # Cache for privileged role checks
     total_roles = len(graph)
@@ -467,7 +479,7 @@ def find_chains(graph):
     def dfs(current, path, visited):
         # Use cached result if available
         if current not in privileged_roles:
-            privileged_roles[current] = is_privileged(current)
+            privileged_roles[current] = is_privileged(current, profile)
             
         if privileged_roles[current]:
             chains.append(path + [current])
@@ -570,6 +582,7 @@ def print_progress_bar(iteration, total, prefix='', suffix='', length=50, fill='
 
 # === MAIN ===
 parser = argparse.ArgumentParser(description="Detect IAM privilege escalation via role chaining.")
+parser.add_argument("--profile", help="AWS CLI profile to use")
 parser.add_argument("--filter", help="Only include roles starting with this prefix", default="")
 parser.add_argument("--limit", type=int, help="Limit the number of roles to evaluate", default=None)
 parser.add_argument("--cross-account", action="store_true", help="Check for cross-account trust relationships")
@@ -581,14 +594,14 @@ args = parser.parse_args()
 
 start_time = datetime.now()
 print(f"[{start_time}] Starting IAM escalation chain analysis...")
-print(f"[INFO] AWS Account ID: {get_account_id()}")
+print(f"[INFO] AWS Account ID: {get_account_id(args.profile)}")
 
 # Set global verbosity
 verbose = args.verbose
 
 # Get account ID and roles with progress reporting
-ACCOUNT_ID = get_account_id()
-roles = get_all_roles()
+ACCOUNT_ID = get_account_id(args.profile)
+roles = get_all_roles(args.profile)
 
 # Filter roles
 filtered_roles = [r for r in roles if r.startswith(args.filter)] if args.filter else list(roles.keys())
@@ -601,7 +614,7 @@ print(f"[INFO] Using {args.max_workers} parallel workers")
 
 # Build graph with progress reporting
 graph_start = time.time()
-result = build_graph_parallel(filtered_roles, ACCOUNT_ID)
+result = build_graph_parallel(filtered_roles, ACCOUNT_ID, args.profile)
 graph = result["graph"]
 cross_account_findings = result["cross_account_findings"]
 graph_duration = time.time() - graph_start
@@ -611,7 +624,7 @@ print(f"[INFO] Found {len(cross_account_findings)} roles with cross-account trus
 
 # Find chains with progress reporting
 chains_start = time.time()
-chains = find_chains(graph)
+chains = find_chains(graph, args.profile)
 chains_duration = time.time() - chains_start
 print(f"[INFO] Chain detection completed in {chains_duration:.2f} seconds")
 
