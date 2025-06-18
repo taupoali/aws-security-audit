@@ -370,15 +370,29 @@ def export_findings_to_csv(findings, filename):
     try:
         with open(filename, 'w', newline='') as csvfile:
             if isinstance(findings[0], dict):
-                fieldnames = findings[0].keys()
-                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                # Get all possible field names from all findings
+                all_keys = set()
+                for finding in findings:
+                    all_keys.update(finding.keys())
+                
+                fieldnames = list(all_keys)
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames, extrasaction='ignore')
                 writer.writeheader()
+                
                 for finding in findings:
                     # Convert complex objects to strings
-                    for key, value in finding.items():
-                        if isinstance(value, (dict, list)):
-                            finding[key] = json.dumps(value)
-                    writer.writerow(finding)
+                    row_data = {}
+                    for key in fieldnames:
+                        if key in finding:
+                            value = finding[key]
+                            if isinstance(value, (dict, list)):
+                                row_data[key] = json.dumps(value)
+                            else:
+                                row_data[key] = value
+                        else:
+                            row_data[key] = ""
+                    
+                    writer.writerow(row_data)
             else:
                 writer = csv.writer(csvfile)
                 writer.writerow(["Findings"])
