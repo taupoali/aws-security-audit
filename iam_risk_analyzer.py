@@ -551,7 +551,7 @@ def generate_html_report(elevated_entities, condition_findings, risk_findings, o
                 body { font-family: Arial, sans-serif; margin: 20px; }
                 h1, h2, h3 { color: #232F3E; }
                 table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
-                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: top; }
                 th { background-color: #232F3E; color: white; }
                 tr:nth-child(even) { background-color: #f2f2f2; }
                 .critical { background-color: #ff9999; }
@@ -606,14 +606,16 @@ def generate_html_report(elevated_entities, condition_findings, risk_findings, o
         # Add top 10 risk findings
         for finding in risk_findings[:10]:
             risk_class = finding["RiskLevel"].lower()
-            recommendations = "<br>".join(finding["Recommendations"])
+            # Convert recommendations to a proper HTML list
+            recommendations_list = "".join([f"<li>{rec}</li>" for rec in finding["Recommendations"]])
+            recommendations_html = f"<ul style='margin: 0; padding-left: 20px;'>{recommendations_list}</ul>"
             html += f"""
                     <tr class="{risk_class}">
                         <td>{finding["EntityType"]}</td>
                         <td>{finding["EntityName"]}</td>
                         <td>{finding["RiskScore"]:.1f}</td>
                         <td>{finding["RiskLevel"]}</td>
-                        <td>{recommendations}</td>
+                        <td>{recommendations_html}</td>
                     </tr>
             """
         
