@@ -13,8 +13,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 API_STATS = {"calls": 0, "timeouts": 0, "errors": 0, "cached": 0}
 API_CACHE = {}
 
-def run_aws_command(cmd, retries=2):
+def run_aws_command(cmd, profile=None, retries=2):
     """Run AWS CLI command with retries and caching"""
+    if profile:
+        cmd = ["aws", "--profile", profile] + cmd[1:]
+    
     cmd_key = ' '.join(cmd)
     if cmd_key in API_CACHE:
         API_STATS["cached"] += 1
@@ -45,15 +48,15 @@ def run_aws_command(cmd, retries=2):
                 return None
     return None
 
-def get_account_id():
+def get_account_id(profile=None):
     """Get current AWS account ID"""
-    result = run_aws_command(["aws", "sts", "get-caller-identity", "--query", "Account", "--output", "text"])
+    result = run_aws_command(["aws", "sts", "get-caller-identity", "--query", "Account", "--output", "text"], profile)
     return result.strip() if result else "unknown"
 
-def get_all_roles():
+def get_all_roles(profile=None):
     """Get all IAM roles in the account"""
     print("[INFO] Retrieving all IAM roles...")
-    result = run_aws_command(["aws", "iam", "list-roles", "--output", "json"])
+    result = run_aws_command(["aws", "iam", "list-roles", "--output", "json"], profile)
     if not result:
         print("[ERROR] Failed to retrieve IAM roles")
         return []
@@ -63,12 +66,12 @@ def get_all_roles():
     print(f"[INFO] Found {len(roles)} IAM roles")
     return roles
 
-def get_role_policies(role_name):
+def get_role_policies(role_name, profile=None):
     """Get all policies (inline and managed) attached to a role"""
     policies = []
     
     # Get inline policies
-    inline_result = run_aws_command(["aws", "iam", "list-role-policies", "--role-name", role_name, "--output", "json"])
+    inline_result = run_aws_command(["aws", "iam", "list-role-policies", "--role-name", role_name, "--output", "json"], profile)
     if inline_result:
         policy_names = json.loads(inline_result).get("PolicyNames", [])
         for policy_name in policy_names:
@@ -77,7 +80,7 @@ def get_role_policies(role_name):
                 "--role-name", role_name, 
                 "--policy-name", policy_name,
                 "--output", "json"
-            ])
+            ], profile)
             if policy_result:
                 policy_data = json.loads(policy_result)
                 policies.append({
@@ -91,7 +94,7 @@ def get_role_policies(role_name):
         "aws", "iam", "list-attached-role-policies", 
         "--role-name", role_name,
         "--output", "json"
-    ])
+    ], profile)
     if managed_result:
         attached_policies = json.loads(managed_result).get("AttachedPolicies", [])
         for policy in attached_policies:
@@ -100,7 +103,7 @@ def get_role_policies(role_name):
                 "aws", "iam", "get-policy",
                 "--policy-arn", policy_arn,
                 "--output", "json"
-            ])
+            ], profile)
             
             if policy_version_result:
                 policy_data = json.loads(policy_version_result)
@@ -112,7 +115,7 @@ def get_role_policies(role_name):
                         "--policy-arn", policy_arn,
                         "--version-id", default_version,
                         "--output", "json"
-                    ])
+                    ], profile)
                     
                     if version_result:
                         version_data = json.loads(version_result)
@@ -125,18 +128,18 @@ def get_role_policies(role_name):
     
     return policies
 
-def get_role_trust_policy(role_name):
+def get_role_trust_policy(role_name, profile=None):
     """Get the trust policy for a role"""
-    result = run_aws_command(["aws", "iam", "get-role", "--role-name", role_name, "--output", "json"])
+    result = run_aws_command(["aws", "iam", "get-role", "--role-name", role_name, "--output", "json"], profile)
     if result:
         role_data = json.loads(result)
         return role_data.get("Role", {}).get("AssumeRolePolicyDocument", {})
     return {}
 
-def analyze_cross_account_access(roles):
+def analyze_cross_account_access(roles, profile=None):
     """Analyze cross-account access in roles"""
     print("[INFO] Analyzing cross-account access...")
-    current_account = get_account_id()
+    current_account = get_account_id(profile)
     cross_account_findings = []
     
     for role in roles:
@@ -179,7 +182,7 @@ def analyze_cross_account_access(roles):
                     })
         
         # Check role policies for cross-account access
-        policies = get_role_policies(role_name)
+        policies = get_role_policies(role_name, profile)
         for policy in policies:
             policy_doc = policy.get("PolicyDocument", {})
             statements = policy_doc.get("Statement", [])
@@ -212,7 +215,7 @@ def analyze_cross_account_access(roles):
     print(f"[INFO] Found {len(cross_account_findings)} cross-account access findings")
     return cross_account_findings
 
-def analyze_role_permissions(roles):
+def analyze_role_permissions(roles, profile=None):
     """Analyze role permissions for least privilege assessment"""
     print("[INFO] Analyzing role permissions...")
     permission_findings = []
@@ -317,14 +320,14 @@ def analyze_role_permissions(roles):
     print(f"[INFO] Completed permission analysis for {len(permission_findings)} roles")
     return permission_findings
 
-def analyze_role_pass_permissions(roles):
+def analyze_role_pass_permissions(roles, profile=None):
     """Analyze roles that can pass roles to services"""
     print("[INFO] Analyzing role pass permissions...")
     pass_role_findings = []
     
     for role in roles:
         role_name = role.get("RoleName")
-        policies = get_role_policies(role_name)
+        policies = get_role_policies(role_name, profile)
         
         for policy in policies:
             policy_doc = policy.get("PolicyDocument", {})
@@ -389,6 +392,7 @@ def export_findings_to_csv(findings, filename):
 
 def main():
     parser = argparse.ArgumentParser(description="Analyze IAM permissions for security audit")
+    parser.add_argument("--profile", help="AWS CLI profile to use")
     parser.add_argument("--output-dir", default=".", help="Directory to save output files")
     parser.add_argument("--cross-account", action="store_true", help="Analyze cross-account access")
     parser.add_argument("--least-privilege", action="store_true", help="Analyze adherence to least privilege")
@@ -401,22 +405,22 @@ def main():
     print(f"[{start_time}] Starting IAM permission analysis...")
     
     # Get all roles
-    roles = get_all_roles()
+    roles = get_all_roles(args.profile)
     if not roles:
         print("[ERROR] No roles found. Exiting.")
         return
     
     # Run selected analyses
     if args.all or args.cross_account:
-        cross_account_findings = analyze_cross_account_access(roles)
+        cross_account_findings = analyze_cross_account_access(roles, args.profile)
         export_findings_to_csv(cross_account_findings, f"{args.output_dir}/cross_account_findings.csv")
     
     if args.all or args.least_privilege:
-        permission_findings = analyze_role_permissions(roles)
+        permission_findings = analyze_role_permissions(roles, args.profile)
         export_findings_to_csv(permission_findings, f"{args.output_dir}/permission_findings.csv")
     
     if args.all or args.pass_role:
-        pass_role_findings = analyze_role_pass_permissions(roles)
+        pass_role_findings = analyze_role_pass_permissions(roles, args.profile)
         export_findings_to_csv(pass_role_findings, f"{args.output_dir}/pass_role_findings.csv")
     
     end_time = datetime.now()
