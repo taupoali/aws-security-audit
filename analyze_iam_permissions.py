@@ -46,7 +46,26 @@ def run_aws_command(cmd, profile=None, retries=3):
                 jitter = delay * 0.2 * (2 * (0.5 - (time.time() % 1)) if time.time() % 1 > 0.5 else 0)
                 actual_delay = delay + jitter
                 
-                print(f"Retrying command after {actual_delay:.2f}s (attempt {attempt+1}/{retries}): {cmd[0]} {cmd[-2]} {cmd[-1]}")
+                # Create a more informative command summary
+                cmd_summary = ""
+                if len(cmd) >= 2 and cmd[0] == "aws":
+                    # Extract the AWS service (e.g., iam, s3, ec2)
+                    if len(cmd) > 1:
+                        cmd_summary = f"aws {cmd[1]}"
+                    # Add the operation if available
+                    if len(cmd) > 2:
+                        cmd_summary += f" {cmd[2]}"
+                    # Add resource identifier if available (look for --role-name, --policy-arn, etc.)
+                    for i in range(3, len(cmd)-1):
+                        if cmd[i].startswith("--") and i+1 < len(cmd):
+                            if cmd[i] in ["--role-name", "--user-name", "--policy-name", "--policy-arn"]:
+                                cmd_summary += f" {cmd[i]} {cmd[i+1]}"
+                                break
+                else:
+                    # Fallback to showing first and last parts
+                    cmd_summary = f"{cmd[0]} ... {cmd[-1]}"
+                
+                print(f"Retrying command after {actual_delay:.2f}s (attempt {attempt+1}/{retries}): {cmd_summary}")
                 time.sleep(actual_delay)
             else:
                 API_STATS["errors"] += 1
@@ -60,7 +79,26 @@ def run_aws_command(cmd, profile=None, retries=3):
                 jitter = delay * 0.2 * (2 * (0.5 - (time.time() % 1)) if time.time() % 1 > 0.5 else 0)
                 actual_delay = delay + jitter
                 
-                print(f"Command timed out, retrying after {actual_delay:.2f}s (attempt {attempt+1}/{retries})")
+                # Create a more informative command summary
+                cmd_summary = ""
+                if len(cmd) >= 2 and cmd[0] == "aws":
+                    # Extract the AWS service (e.g., iam, s3, ec2)
+                    if len(cmd) > 1:
+                        cmd_summary = f"aws {cmd[1]}"
+                    # Add the operation if available
+                    if len(cmd) > 2:
+                        cmd_summary += f" {cmd[2]}"
+                    # Add resource identifier if available (look for --role-name, --policy-arn, etc.)
+                    for i in range(3, len(cmd)-1):
+                        if cmd[i].startswith("--") and i+1 < len(cmd):
+                            if cmd[i] in ["--role-name", "--user-name", "--policy-name", "--policy-arn"]:
+                                cmd_summary += f" {cmd[i]} {cmd[i+1]}"
+                                break
+                else:
+                    # Fallback to showing first and last parts
+                    cmd_summary = f"{cmd[0]} ... {cmd[-1]}"
+                
+                print(f"Command timed out, retrying after {actual_delay:.2f}s (attempt {attempt+1}/{retries}): {cmd_summary}")
                 time.sleep(actual_delay)
             else:
                 return None
