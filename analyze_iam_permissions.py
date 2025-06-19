@@ -29,6 +29,45 @@ def run_aws_command(cmd, profile=None, retries=3):
     base_delay = 1.0  # Start with 1 second
     max_delay = 30.0  # Maximum delay of 30 seconds
     
+    # Function to create a readable command summary
+    def create_cmd_summary(cmd):
+        cmd_summary = ""
+        profile_info = ""
+        
+        if len(cmd) >= 2 and cmd[0] == "aws":
+            # Check if profile is being used
+            if "--profile" in cmd:
+                profile_idx = cmd.index("--profile")
+                if profile_idx + 1 < len(cmd):
+                    profile_info = f" (profile: {cmd[profile_idx+1]})"
+            
+            # Extract the AWS service (e.g., iam, s3, ec2)
+            service_idx = 1
+            if "--profile" in cmd and cmd.index("--profile") == 1:
+                service_idx = 3  # Skip the profile parameter
+            
+            if len(cmd) > service_idx:
+                cmd_summary = f"aws {cmd[service_idx]}"
+            
+            # Add the operation if available
+            if len(cmd) > service_idx + 1:
+                cmd_summary += f" {cmd[service_idx+1]}"
+            
+            # Add resource identifier if available
+            for i in range(service_idx+2, len(cmd)-1):
+                if cmd[i].startswith("--") and i+1 < len(cmd):
+                    if cmd[i] in ["--role-name", "--user-name", "--policy-name", "--policy-arn"]:
+                        cmd_summary += f" {cmd[i]} {cmd[i+1]}"
+                        break
+            
+            # Add profile info at the end
+            cmd_summary += profile_info
+        else:
+            # Fallback to showing first and last parts
+            cmd_summary = f"{cmd[0]} ... {cmd[-1]}"
+            
+        return cmd_summary
+    
     for attempt in range(retries + 1):
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
@@ -46,25 +85,7 @@ def run_aws_command(cmd, profile=None, retries=3):
                 jitter = delay * 0.2 * (2 * (0.5 - (time.time() % 1)) if time.time() % 1 > 0.5 else 0)
                 actual_delay = delay + jitter
                 
-                # Create a more informative command summary
-                cmd_summary = ""
-                if len(cmd) >= 2 and cmd[0] == "aws":
-                    # Extract the AWS service (e.g., iam, s3, ec2)
-                    if len(cmd) > 1:
-                        cmd_summary = f"aws {cmd[1]}"
-                    # Add the operation if available
-                    if len(cmd) > 2:
-                        cmd_summary += f" {cmd[2]}"
-                    # Add resource identifier if available (look for --role-name, --policy-arn, etc.)
-                    for i in range(3, len(cmd)-1):
-                        if cmd[i].startswith("--") and i+1 < len(cmd):
-                            if cmd[i] in ["--role-name", "--user-name", "--policy-name", "--policy-arn"]:
-                                cmd_summary += f" {cmd[i]} {cmd[i+1]}"
-                                break
-                else:
-                    # Fallback to showing first and last parts
-                    cmd_summary = f"{cmd[0]} ... {cmd[-1]}"
-                
+                cmd_summary = create_cmd_summary(cmd)
                 print(f"Retrying command after {actual_delay:.2f}s (attempt {attempt+1}/{retries}): {cmd_summary}")
                 time.sleep(actual_delay)
             else:
@@ -79,25 +100,7 @@ def run_aws_command(cmd, profile=None, retries=3):
                 jitter = delay * 0.2 * (2 * (0.5 - (time.time() % 1)) if time.time() % 1 > 0.5 else 0)
                 actual_delay = delay + jitter
                 
-                # Create a more informative command summary
-                cmd_summary = ""
-                if len(cmd) >= 2 and cmd[0] == "aws":
-                    # Extract the AWS service (e.g., iam, s3, ec2)
-                    if len(cmd) > 1:
-                        cmd_summary = f"aws {cmd[1]}"
-                    # Add the operation if available
-                    if len(cmd) > 2:
-                        cmd_summary += f" {cmd[2]}"
-                    # Add resource identifier if available (look for --role-name, --policy-arn, etc.)
-                    for i in range(3, len(cmd)-1):
-                        if cmd[i].startswith("--") and i+1 < len(cmd):
-                            if cmd[i] in ["--role-name", "--user-name", "--policy-name", "--policy-arn"]:
-                                cmd_summary += f" {cmd[i]} {cmd[i+1]}"
-                                break
-                else:
-                    # Fallback to showing first and last parts
-                    cmd_summary = f"{cmd[0]} ... {cmd[-1]}"
-                
+                cmd_summary = create_cmd_summary(cmd)
                 print(f"Command timed out, retrying after {actual_delay:.2f}s (attempt {attempt+1}/{retries}): {cmd_summary}")
                 time.sleep(actual_delay)
             else:
@@ -293,7 +296,7 @@ def analyze_role_permissions(roles, profile=None):
     
     for role in roles:
         role_name = role.get("RoleName")
-        policies = get_role_policies(role_name)
+        policies = get_role_policies(role_name, profile)
         
         # Track permissions by service
         service_permissions = {}
