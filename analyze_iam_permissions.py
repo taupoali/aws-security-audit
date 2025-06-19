@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 API_STATS = {"calls": 0, "timeouts": 0, "errors": 0, "cached": 0}
 API_CACHE = {}
 
-def run_aws_command(cmd, profile=None, retries=2):
+def run_aws_command(cmd, profile=None, retries=3):
     """Run AWS CLI command with retries and caching"""
     if profile:
         cmd = ["aws", "--profile", profile] + cmd[1:]
@@ -24,6 +24,11 @@ def run_aws_command(cmd, profile=None, retries=2):
         return API_CACHE[cmd_key]
     
     API_STATS["calls"] += 1
+    
+    # Backoff parameters
+    base_delay = 1.0  # Start with 1 second
+    max_delay = 30.0  # Maximum delay of 30 seconds
+    
     for attempt in range(retries + 1):
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
@@ -33,17 +38,30 @@ def run_aws_command(cmd, profile=None, retries=2):
             if "AccessDenied" in e.stderr or "UnauthorizedOperation" in e.stderr:
                 print(f"Access denied: {e.stderr}")
                 return None
+                
             if attempt < retries:
-                delay = 1 * (2 ** attempt)  # Exponential backoff
-                print(f"Retrying command after {delay}s: {' '.join(cmd)}")
-                time.sleep(delay)
+                # True exponential backoff with jitter
+                delay = min(max_delay, base_delay * (2 ** attempt))
+                # Add jitter (±20%)
+                jitter = delay * 0.2 * (2 * (0.5 - (time.time() % 1)) if time.time() % 1 > 0.5 else 0)
+                actual_delay = delay + jitter
+                
+                print(f"Retrying command after {actual_delay:.2f}s (attempt {attempt+1}/{retries}): {cmd[0]} {cmd[-2]} {cmd[-1]}")
+                time.sleep(actual_delay)
             else:
                 API_STATS["errors"] += 1
                 return None
         except subprocess.TimeoutExpired:
             API_STATS["timeouts"] += 1
             if attempt < retries:
-                time.sleep(2 * (attempt + 1))
+                # Use same exponential backoff for timeouts
+                delay = min(max_delay, base_delay * (2 ** attempt))
+                # Add jitter (±20%)
+                jitter = delay * 0.2 * (2 * (0.5 - (time.time() % 1)) if time.time() % 1 > 0.5 else 0)
+                actual_delay = delay + jitter
+                
+                print(f"Command timed out, retrying after {actual_delay:.2f}s (attempt {attempt+1}/{retries})")
+                time.sleep(actual_delay)
             else:
                 return None
     return None
