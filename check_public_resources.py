@@ -1918,12 +1918,19 @@ def main():
     # Check AWS CLI version for account list-regions support
     cli_version = version.split('/')[1].split(' ')[0] if '/' in version else "0.0.0"
     has_account_api = False
+    
+    # Simple version check without using packaging module
     try:
-        from packaging import version
-        has_account_api = version.parse(cli_version) >= version.parse("2.9.0")
-    except ImportError:
-        # Simple version check if packaging module is not available
-        has_account_api = cli_version.startswith("2.") and int(cli_version.split('.')[1]) >= 9
+        # Parse version components
+        version_parts = cli_version.split('.')
+        major = int(version_parts[0]) if version_parts and version_parts[0].isdigit() else 0
+        minor = int(version_parts[1]) if len(version_parts) > 1 and version_parts[1].isdigit() else 0
+        
+        # Check if version is at least 2.9.0
+        has_account_api = (major > 2) or (major == 2 and minor >= 9)
+    except Exception:
+        # If any error occurs during version parsing, assume API is not available
+        has_account_api = False
     
     if not has_account_api:
         print("Note: AWS CLI version 2.9.0+ required for checking enabled regions. Will check all available regions.")
