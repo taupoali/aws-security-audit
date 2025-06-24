@@ -28,15 +28,19 @@ def run_aws_command(cmd, profile=None, retries=2):
             API_CACHE[cmd_key] = result.stdout
             return result.stdout
         except subprocess.CalledProcessError as e:
-            if "AccessDenied" in e.stderr or "UnauthorizedOperation" in e.stderr:
-                print(f"Access denied: {e.stderr}")
+            error_msg = e.stderr.strip()
+            if "AccessDenied" in error_msg or "UnauthorizedOperation" in error_msg:
+                print(f"Access denied: {error_msg}")
                 return None
             if attempt < retries:
                 delay = 1 * (2 ** attempt)  # Exponential backoff
                 print(f"Retrying command after {delay}s: {' '.join(cmd)}")
+                print(f"Error was: {error_msg}")
                 time.sleep(delay)
             else:
                 API_STATS["errors"] += 1
+                print(f"Command failed after {retries+1} attempts: {' '.join(cmd)}")
+                print(f"Error: {error_msg}")
                 return None
         except subprocess.TimeoutExpired:
             API_STATS["timeouts"] += 1
@@ -49,11 +53,31 @@ def run_aws_command(cmd, profile=None, retries=2):
 def get_organization_details(profile=None):
     """Get AWS Organizations details"""
     cmd = ["aws", "organizations", "describe-organization", "--output", "json"]
-    result = run_aws_command(cmd, profile)
+    
+    # Try with increased retries and debug output
+    print("[INFO] Attempting to get organization details...")
+    result = run_aws_command(cmd, profile, retries=3)
+    
     if not result:
         print("[ERROR] Failed to get organization details. Make sure you have appropriate permissions.")
+        print("[DEBUG] This could be due to:")
+        print("  1. The profile doesn't have organizations:DescribeOrganization permission")
+        print("  2. The AWS credentials have expired")
+        print("  3. The account is not part of an AWS Organization")
+        print("  4. Network connectivity issues")
+        print("\nTry running this command manually to debug:")
+        manual_cmd = " ".join(cmd)
+        if profile:
+            manual_cmd = f"aws --profile {profile} organizations describe-organization --output json"
+        print(f"  {manual_cmd}")
         return None
-    return json.loads(result).get("Organization")
+    
+    try:
+        return json.loads(result).get("Organization")
+    except json.JSONDecodeError as e:
+        print(f"[ERROR] Failed to parse organization details: {e}")
+        print(f"[DEBUG] Raw response: {result[:200]}...")  # Show first 200 chars
+        return None
 
 def get_organization_roots(profile=None):
     """Get AWS Organizations roots"""
@@ -196,6 +220,38 @@ def build_organization_structure(profile=None):
     """Build the AWS Organizations structure"""
     org = get_organization_details(profile)
     if not org:
+        print("[WARN] Could not retrieve organization details. Attempting to continue with limited functionality.")
+        # Create a minimal structure to allow the script to continue
+        structure = {
+            "Organization": {"Id": "unknown", "MasterAccountId": "unknown"},
+            "Roots": [],
+            "OUs": [],
+            "Accounts": []
+        }
+        
+        # Try to get the root directly
+        try:
+            print("[INFO] Attempting to list policies directly...")
+            cmd = ["aws", "organizations", "list-policies", "--filter", "SERVICE_CONTROL_POLICY", "--output", "json"]
+            if profile:
+                cmd = ["aws", "--profile", profile] + cmd[1:]
+                
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode == 0:
+                policies = json.loads(result.stdout).get("Policies", [])
+                if policies:
+                    print(f"[INFO] Found {len(policies)} policies directly. Will analyze these.")
+                    # Create a dummy root to attach policies to
+                    structure["Roots"] = [{
+                        "Id": "r-dummy",
+                        "Name": "Organization Root",
+                        "Policies": policies
+                    }]
+                    return structure
+        except Exception as e:
+            print(f"[WARN] Failed to list policies directly: {e}")
+        
+        print("[ERROR] Cannot continue without organization structure or policies.")
         return None
     
     structure = {

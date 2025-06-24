@@ -341,9 +341,10 @@ def main():
         summaries.append(summary)
         print_summary(summary)
     
-    # Export to CSV if multiple accounts
-    if len(summaries) > 1:
+    # Always export to CSV
+    if summaries:
         export_to_csv(summaries, args.output)
+        print(f"\n[INFO] Summary exported to {args.output}")
     
     end_time = datetime.now()
     duration = end_time - start_time

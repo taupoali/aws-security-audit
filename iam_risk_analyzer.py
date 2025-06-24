@@ -606,9 +606,26 @@ def generate_html_report(elevated_entities, condition_findings, risk_findings, o
         # Add top 10 risk findings
         for finding in risk_findings[:10]:
             risk_class = finding["RiskLevel"].lower()
-            # Convert recommendations to a proper HTML list
-            recommendations_list = "".join([f"<li>{rec}</li>" for rec in finding["Recommendations"]])
+            
+            # Ensure recommendations are properly processed as a list
+            recommendations = finding["Recommendations"]
+            if isinstance(recommendations, str):
+                # If it's a string (possibly JSON), try to parse it
+                try:
+                    recommendations = json.loads(recommendations)
+                except:
+                    recommendations = [recommendations]
+            
+            # Create HTML list items for each recommendation
+            recommendations_list = ""
+            for rec in recommendations:
+                # Remove any quotes that might be around the recommendation
+                if isinstance(rec, str):
+                    rec = rec.strip('"')
+                recommendations_list += f"<li>{rec}</li>"
+                
             recommendations_html = f"<ul style='margin: 0; padding-left: 20px;'>{recommendations_list}</ul>"
+            
             html += f"""
                     <tr class="{risk_class}">
                         <td>{finding["EntityType"]}</td>

@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 API_STATS = {"calls": 0, "timeouts": 0, "errors": 0, "cached": 0}
 API_CACHE = {}
 
-def run_aws_command(cmd, account=None, profile=None, region=None, retries=2):
+def run_aws_command(cmd, account=None, profile=None, region=None, retries=3):
     """Run AWS CLI command with retries and caching"""
     # Modify command for specific account/profile
     if profile:
@@ -29,26 +29,68 @@ def run_aws_command(cmd, account=None, profile=None, region=None, retries=2):
         return API_CACHE[cmd_key]
     
     API_STATS["calls"] += 1
+    
+    # Backoff parameters
+    base_delay = 2.0  # Start with 2 seconds
+    max_delay = 30.0  # Maximum delay of 30 seconds
+    
+    # Track previous errors to avoid repeating the same command with the same error
+    last_error = None
+    
+    # Special case for S3 bucket policy - don't retry NoSuchBucketPolicy errors
+    is_get_bucket_policy = "s3api" in cmd and "get-bucket-policy" in cmd
+    
     for attempt in range(retries + 1):
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
             API_CACHE[cmd_key] = result.stdout
             return result.stdout
         except subprocess.CalledProcessError as e:
-            if "AccessDenied" in e.stderr or "UnauthorizedOperation" in e.stderr:
-                print(f"Access denied: {e.stderr}")
+            error_msg = e.stderr.strip()
+            
+            # Special handling for NoSuchBucketPolicy - this is normal for buckets without policies
+            if is_get_bucket_policy and "NoSuchBucketPolicy" in error_msg:
+                API_STATS["calls"] += 1  # Count as a successful call
+                return None  # Just return None without retrying
+            
+            # Don't retry the same error multiple times
+            if last_error == error_msg:
+                API_STATS["errors"] += 1
                 return None
+                
+            last_error = error_msg
+            
+            if "AccessDenied" in error_msg or "UnauthorizedOperation" in error_msg:
+                print(f"Access denied: {error_msg}")
+                return None
+                
             if attempt < retries:
-                delay = 1 * (2 ** attempt)  # Exponential backoff
-                print(f"Retrying command after {delay}s: {' '.join(cmd)}")
-                time.sleep(delay)
+                # True exponential backoff with jitter
+                delay = min(max_delay, base_delay * (2 ** attempt))
+                # Add jitter (±20%)
+                jitter = delay * 0.2 * ((time.time() % 1) - 0.5)
+                actual_delay = delay + jitter
+                
+                # Create a more informative command summary
+                service = cmd[1] if len(cmd) > 1 else "unknown"
+                operation = cmd[2] if len(cmd) > 2 else "unknown"
+                
+                print(f"[RETRY {attempt+1}/{retries}] {service} {operation} after {actual_delay:.1f}s: {error_msg}")
+                time.sleep(actual_delay)
             else:
                 API_STATS["errors"] += 1
                 return None
         except subprocess.TimeoutExpired:
             API_STATS["timeouts"] += 1
             if attempt < retries:
-                time.sleep(2 * (attempt + 1))
+                # Use same exponential backoff for timeouts
+                delay = min(max_delay, base_delay * (2 ** attempt))
+                # Add jitter (±20%)
+                jitter = delay * 0.2 * ((time.time() % 1) - 0.5)
+                actual_delay = delay + jitter
+                
+                print(f"[TIMEOUT {attempt+1}/{retries}] Retrying after {actual_delay:.1f}s")
+                time.sleep(actual_delay)
             else:
                 return None
     return None
@@ -143,30 +185,41 @@ def detect_s3_buckets(region, profile=None):
     
     for bucket in bucket_list:
         bucket_name = bucket.get("Name")
-        
-        # Check if bucket is public
-        acl_cmd = ["aws", "s3api", "get-bucket-acl", "--bucket", bucket_name, "--output", "json"]
-        acl_result = run_aws_command(acl_cmd, profile=profile)
-        
         is_public = False
-        if acl_result:
-            acl = json.loads(acl_result)
-            for grant in acl.get("Grants", []):
-                grantee = grant.get("Grantee", {})
-                if grantee.get("URI") == "http://acs.amazonaws.com/groups/global/AllUsers":
-                    is_public = True
-                    break
+        public_reason = None
         
-        # Check bucket policy
-        if not is_public:
-            policy_cmd = ["aws", "s3api", "get-bucket-policy", "--bucket", bucket_name, "--output", "json"]
-            try:
-                policy_result = run_aws_command(policy_cmd, profile=profile)
-                if policy_result:
-                    policy = json.loads(policy_result).get("Policy", "{}")
-                    if '"Principal": "*"' in policy or '"Principal":{"AWS":"*"}' in policy:
+        # Check if bucket is public via ACL
+        try:
+            acl_cmd = ["aws", "s3api", "get-bucket-acl", "--bucket", bucket_name, "--output", "json"]
+            acl_result = run_aws_command(acl_cmd, profile=profile)
+            
+            if acl_result:
+                acl = json.loads(acl_result)
+                for grant in acl.get("Grants", []):
+                    grantee = grant.get("Grantee", {})
+                    if grantee.get("URI") == "http://acs.amazonaws.com/groups/global/AllUsers":
                         is_public = True
-            except:
+                        public_reason = "Public ACL"
+                        break
+        except Exception as e:
+            print(f"[WARN] Error checking ACL for bucket {bucket_name}: {str(e)[:100]}")
+        
+        # Check bucket policy for public access - with direct subprocess call to avoid retries
+        if not is_public:
+            try:
+                policy_cmd = ["aws", "s3api", "get-bucket-policy", "--bucket", bucket_name, "--output", "json"]
+                if profile:
+                    policy_cmd = ["aws", "--profile", profile, "s3api", "get-bucket-policy", "--bucket", bucket_name, "--output", "json"]
+                
+                # Run directly with subprocess, no retries
+                result = subprocess.run(policy_cmd, capture_output=True, text=True)
+                if result.returncode == 0:
+                    policy_str = json.loads(result.stdout).get("Policy", "{}")
+                    if '"Principal": "*"' in policy_str or '"Principal":{"AWS":"*"}' in policy_str:
+                        is_public = True
+                        public_reason = "Public Policy"
+            except Exception:
+                # Silently ignore errors for bucket policy - this is expected for many buckets
                 pass
         
         buckets.append({
@@ -174,9 +227,12 @@ def detect_s3_buckets(region, profile=None):
             "ResourceName": bucket_name,
             "ResourceType": "S3 Bucket",
             "IsPublic": is_public,
+            "PublicReason": public_reason,
             "PublicEndpoint": f"https://{bucket_name}.s3.amazonaws.com" if is_public else None,
             "State": "Available"
         })
+    
+    return buckets
     
     return buckets
 

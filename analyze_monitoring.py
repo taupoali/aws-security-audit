@@ -73,7 +73,10 @@ def check_cloudwatch_alarms(region, profile=None):
             "ResourceId": "N/A",
             "Status": "Error",
             "Issue": "Failed to retrieve CloudWatch alarms",
-            "Recommendation": "Ensure you have permissions to view CloudWatch alarms"
+            "Recommendation": "Ensure you have permissions to view CloudWatch alarms",
+            "AlarmCount": 0,
+            "AlarmsByNamespace": "{}",
+            "AlarmsInAlarmState": 0
         })
         return findings
     
@@ -87,9 +90,18 @@ def check_cloudwatch_alarms(region, profile=None):
             "ResourceId": "N/A",
             "Status": "Critical",
             "Issue": "No CloudWatch alarms found in region",
-            "Recommendation": "Set up CloudWatch alarms for critical resources and metrics"
+            "Recommendation": "Set up CloudWatch alarms for critical resources and metrics",
+            "AlarmCount": 0,
+            "AlarmsByNamespace": "{}",
+            "AlarmsInAlarmState": 0
         })
         return findings
+    
+    # Track alarm statistics
+    alarm_count = len(alarms) + len(composite_alarms)
+    alarms_by_namespace = {}
+    alarms_in_alarm_state = 0
+    alarms_with_no_actions = 0
     
     # Check metric alarms
     for alarm in alarms:
@@ -98,6 +110,20 @@ def check_cloudwatch_alarms(region, profile=None):
         ok_actions = alarm.get("OKActions", [])
         insufficient_data_actions = alarm.get("InsufficientDataActions", [])
         state = alarm.get("StateValue")
+        namespace = alarm.get("Namespace", "Unknown")
+        
+        # Track namespace statistics
+        if namespace not in alarms_by_namespace:
+            alarms_by_namespace[namespace] = 0
+        alarms_by_namespace[namespace] += 1
+        
+        # Track alarm state
+        if state == "ALARM":
+            alarms_in_alarm_state += 1
+        
+        # Track alarms with no actions
+        if not alarm_actions:
+            alarms_with_no_actions += 1
         
         issues = []
         recommendations = []
@@ -117,7 +143,7 @@ def check_cloudwatch_alarms(region, profile=None):
             issues.append("Alarm is in INSUFFICIENT_DATA state")
             recommendations.append("Check metric data availability")
         
-        # Add finding
+        # Add finding for problematic alarms
         if issues:
             findings.append({
                 "Service": "CloudWatch Alarms",
@@ -125,7 +151,10 @@ def check_cloudwatch_alarms(region, profile=None):
                 "ResourceId": alarm_name,
                 "Status": "Warning" if state != "ALARM" else "Critical",
                 "Issue": "; ".join(issues),
-                "Recommendation": "; ".join(recommendations)
+                "Recommendation": "; ".join(recommendations),
+                "AlarmCount": 1,
+                "AlarmsByNamespace": f"{{{namespace}: 1}}",
+                "AlarmsInAlarmState": 1 if state == "ALARM" else 0
             })
     
     # Check if there are alarms for critical services
@@ -140,8 +169,24 @@ def check_cloudwatch_alarms(region, profile=None):
                 "ResourceId": namespace,
                 "Status": "Warning",
                 "Issue": f"No alarms found for {namespace}",
-                "Recommendation": f"Consider setting up alarms for critical {namespace} metrics"
+                "Recommendation": f"Consider setting up alarms for critical {namespace} metrics",
+                "AlarmCount": 0,
+                "AlarmsByNamespace": f"{{{namespace}: 0}}",
+                "AlarmsInAlarmState": 0
             })
+    
+    # Add a summary finding for the region
+    findings.append({
+        "Service": "CloudWatch Alarms",
+        "Region": region,
+        "ResourceId": "Summary",
+        "Status": "Good" if alarm_count > 0 and alarms_in_alarm_state == 0 and alarms_with_no_actions == 0 else "Info",
+        "Issue": f"Region has {alarm_count} alarms ({alarms_in_alarm_state} in ALARM state, {alarms_with_no_actions} with no actions)",
+        "Recommendation": "Review alarms in ALARM state and ensure all alarms have actions configured",
+        "AlarmCount": alarm_count,
+        "AlarmsByNamespace": json.dumps(alarms_by_namespace),
+        "AlarmsInAlarmState": alarms_in_alarm_state
+    })
     
     return findings
 
@@ -441,78 +486,163 @@ def generate_recommendations(findings):
     """Generate overall recommendations based on findings"""
     recommendations = []
     
-    # Count issues by service and severity
+    # Count issues by service, region, and severity
     services = {}
+    regions_by_service = {}
+    
     for finding in findings:
         service = finding.get("Service")
         status = finding.get("Status")
+        region = finding.get("Region", "unknown")
         
+        # Track service status counts
         if service not in services:
             services[service] = {"Critical": 0, "Warning": 0, "Info": 0, "Error": 0, "Good": 0}
         
         if status in services[service]:
             services[service][status] += 1
+        
+        # Track regions by service and status
+        if service not in regions_by_service:
+            regions_by_service[service] = {
+                "Enabled": set(),
+                "Disabled": set(),
+                "Issues": set()
+            }
+        
+        # Track where services are enabled/disabled/have issues
+        if status == "Good":
+            regions_by_service[service]["Enabled"].add(region)
+        elif status == "Critical" and "not enabled" in finding.get("Issue", "").lower():
+            regions_by_service[service]["Disabled"].add(region)
+        elif status in ["Critical", "Warning"]:
+            regions_by_service[service]["Issues"].add(region)
+            # If we have issues but service is running, it's still enabled
+            if "not enabled" not in finding.get("Issue", "").lower():
+                regions_by_service[service]["Enabled"].add(region)
     
-    # Generate recommendations for each service
+    # Generate recommendations for each service with region details
     for service, counts in services.items():
-        if counts["Critical"] > 0:
-            if service == "GuardDuty":
+        enabled_regions = regions_by_service[service]["Enabled"]
+        disabled_regions = regions_by_service[service]["Disabled"]
+        issue_regions = regions_by_service[service]["Issues"]
+        
+        if service == "GuardDuty":
+            if disabled_regions:
                 recommendations.append({
                     "Service": service,
                     "Priority": "High",
-                    "Recommendation": "Enable GuardDuty in all regions for threat detection"
+                    "Recommendation": f"Enable GuardDuty in {len(disabled_regions)} regions: {', '.join(sorted(disabled_regions))}",
+                    "EnabledRegions": ", ".join(sorted(enabled_regions)) if enabled_regions else "None",
+                    "DisabledRegions": ", ".join(sorted(disabled_regions)) if disabled_regions else "None",
+                    "IssueRegions": ", ".join(sorted(issue_regions)) if issue_regions else "None"
                 })
-            elif service == "Security Hub":
-                recommendations.append({
-                    "Service": service,
-                    "Priority": "High",
-                    "Recommendation": "Enable Security Hub and security standards in all regions"
-                })
-            elif service == "CloudWatch Alarms":
-                recommendations.append({
-                    "Service": service,
-                    "Priority": "High",
-                    "Recommendation": "Set up CloudWatch alarms for critical resources and metrics"
-                })
-            elif service == "CloudTrail Monitoring":
-                recommendations.append({
-                    "Service": service,
-                    "Priority": "High",
-                    "Recommendation": "Create alarms for critical CloudTrail events"
-                })
-        elif counts["Warning"] > 0:
-            if service == "GuardDuty":
+            elif issue_regions:
                 recommendations.append({
                     "Service": service,
                     "Priority": "Medium",
-                    "Recommendation": "Optimize GuardDuty configuration (enable all data sources, set 15-minute frequency)"
+                    "Recommendation": f"Optimize GuardDuty configuration in {len(issue_regions)} regions: {', '.join(sorted(issue_regions))}",
+                    "EnabledRegions": ", ".join(sorted(enabled_regions)) if enabled_regions else "None",
+                    "DisabledRegions": ", ".join(sorted(disabled_regions)) if disabled_regions else "None",
+                    "IssueRegions": ", ".join(sorted(issue_regions)) if issue_regions else "None"
                 })
-            elif service == "Security Hub":
+            else:
+                recommendations.append({
+                    "Service": service,
+                    "Priority": "Low",
+                    "Recommendation": f"GuardDuty is properly configured in all {len(enabled_regions)} checked regions",
+                    "EnabledRegions": ", ".join(sorted(enabled_regions)) if enabled_regions else "None",
+                    "DisabledRegions": ", ".join(sorted(disabled_regions)) if disabled_regions else "None",
+                    "IssueRegions": ", ".join(sorted(issue_regions)) if issue_regions else "None"
+                })
+        
+        elif service == "Security Hub":
+            if disabled_regions:
+                recommendations.append({
+                    "Service": service,
+                    "Priority": "High",
+                    "Recommendation": f"Enable Security Hub in {len(disabled_regions)} regions: {', '.join(sorted(disabled_regions))}",
+                    "EnabledRegions": ", ".join(sorted(enabled_regions)) if enabled_regions else "None",
+                    "DisabledRegions": ", ".join(sorted(disabled_regions)) if disabled_regions else "None",
+                    "IssueRegions": ", ".join(sorted(issue_regions)) if issue_regions else "None"
+                })
+            elif issue_regions:
                 recommendations.append({
                     "Service": service,
                     "Priority": "Medium",
-                    "Recommendation": "Enable all security standards and configure finding aggregation"
+                    "Recommendation": f"Enable all security standards in {len(issue_regions)} regions: {', '.join(sorted(issue_regions))}",
+                    "EnabledRegions": ", ".join(sorted(enabled_regions)) if enabled_regions else "None",
+                    "DisabledRegions": ", ".join(sorted(disabled_regions)) if disabled_regions else "None",
+                    "IssueRegions": ", ".join(sorted(issue_regions)) if issue_regions else "None"
                 })
-            elif service == "CloudWatch Alarms":
+            else:
                 recommendations.append({
                     "Service": service,
-                    "Priority": "Medium",
-                    "Recommendation": "Review and expand CloudWatch alarm coverage"
+                    "Priority": "Low",
+                    "Recommendation": f"Security Hub is properly configured in all {len(enabled_regions)} checked regions",
+                    "EnabledRegions": ", ".join(sorted(enabled_regions)) if enabled_regions else "None",
+                    "DisabledRegions": ", ".join(sorted(disabled_regions)) if disabled_regions else "None",
+                    "IssueRegions": ", ".join(sorted(issue_regions)) if issue_regions else "None"
+                })
+        
+        elif service == "CloudWatch Alarms":
+            if disabled_regions or issue_regions:
+                recommendations.append({
+                    "Service": service,
+                    "Priority": "High",
+                    "Recommendation": f"Set up CloudWatch alarms for critical resources in {len(disabled_regions) + len(issue_regions)} regions with issues",
+                    "EnabledRegions": ", ".join(sorted(enabled_regions)) if enabled_regions else "None",
+                    "DisabledRegions": ", ".join(sorted(disabled_regions)) if disabled_regions else "None",
+                    "IssueRegions": ", ".join(sorted(issue_regions)) if issue_regions else "None"
+                })
+            else:
+                recommendations.append({
+                    "Service": service,
+                    "Priority": "Low",
+                    "Recommendation": f"CloudWatch alarms are properly configured in all {len(enabled_regions)} checked regions",
+                    "EnabledRegions": ", ".join(sorted(enabled_regions)) if enabled_regions else "None",
+                    "DisabledRegions": ", ".join(sorted(disabled_regions)) if disabled_regions else "None",
+                    "IssueRegions": ", ".join(sorted(issue_regions)) if issue_regions else "None"
+                })
+        
+        elif service == "CloudTrail Monitoring":
+            if disabled_regions or issue_regions:
+                recommendations.append({
+                    "Service": service,
+                    "Priority": "High",
+                    "Recommendation": f"Create alarms for critical CloudTrail events in {len(disabled_regions) + len(issue_regions)} regions with issues",
+                    "EnabledRegions": ", ".join(sorted(enabled_regions)) if enabled_regions else "None",
+                    "DisabledRegions": ", ".join(sorted(disabled_regions)) if disabled_regions else "None",
+                    "IssueRegions": ", ".join(sorted(issue_regions)) if issue_regions else "None"
+                })
+            else:
+                recommendations.append({
+                    "Service": service,
+                    "Priority": "Low",
+                    "Recommendation": f"CloudTrail monitoring is properly configured in all {len(enabled_regions)} checked regions",
+                    "EnabledRegions": ", ".join(sorted(enabled_regions)) if enabled_regions else "None",
+                    "DisabledRegions": ", ".join(sorted(disabled_regions)) if disabled_regions else "None",
+                    "IssueRegions": ", ".join(sorted(issue_regions)) if issue_regions else "None"
                 })
     
     # Add general recommendations
-    if not any(r["Service"] == "General" for r in recommendations):
-        recommendations.append({
-            "Service": "General",
-            "Priority": "Medium",
-            "Recommendation": "Implement a centralized logging and monitoring solution"
-        })
-        
-        recommendations.append({
-            "Service": "General",
-            "Priority": "Medium",
-            "Recommendation": "Create automated response workflows for critical alerts"
-        })
+    recommendations.append({
+        "Service": "General",
+        "Priority": "Medium",
+        "Recommendation": "Implement a centralized logging and monitoring solution",
+        "EnabledRegions": "N/A",
+        "DisabledRegions": "N/A",
+        "IssueRegions": "N/A"
+    })
+    
+    recommendations.append({
+        "Service": "General",
+        "Priority": "Medium",
+        "Recommendation": "Create automated response workflows for critical alerts",
+        "EnabledRegions": "N/A",
+        "DisabledRegions": "N/A",
+        "IssueRegions": "N/A"
+    })
     
     return recommendations
 
@@ -529,12 +659,102 @@ def export_to_csv(findings, filename):
     
     print(f"[INFO] Exported {len(findings)} findings to {filename}")
 
+def generate_summary_report(findings, recommendations):
+    """Generate a detailed summary report"""
+    # Group findings by service and region
+    services_by_region = {}
+    regions_by_service = {}
+    alarm_counts_by_region = {}
+    
+    for finding in findings:
+        service = finding.get("Service")
+        region = finding.get("Region")
+        status = finding.get("Status")
+        
+        # Skip if missing key data
+        if not service or not region or not status:
+            continue
+        
+        # Track services by region
+        if region not in services_by_region:
+            services_by_region[region] = {}
+        if service not in services_by_region[region]:
+            services_by_region[region][service] = {"Good": 0, "Info": 0, "Warning": 0, "Critical": 0, "Error": 0}
+        services_by_region[region][service][status] += 1
+        
+        # Track regions by service
+        if service not in regions_by_service:
+            regions_by_service[service] = {}
+        if region not in regions_by_service[service]:
+            regions_by_service[service][region] = {"Good": 0, "Info": 0, "Warning": 0, "Critical": 0, "Error": 0}
+        regions_by_service[service][region][status] += 1
+        
+        # Track CloudWatch alarm counts by region
+        if service == "CloudWatch Alarms" and finding.get("ResourceId") == "Summary":
+            alarm_counts_by_region[region] = {
+                "AlarmCount": finding.get("AlarmCount", 0),
+                "AlarmsInAlarmState": finding.get("AlarmsInAlarmState", 0),
+                "AlarmsByNamespace": finding.get("AlarmsByNamespace", "{}")
+            }
+    
+    # Generate the report
+    report = []
+    
+    # Add header
+    report.append("=== AWS Monitoring Analysis Summary Report ===\n")
+    
+    # Add CloudWatch Alarms section
+    report.append("=== CloudWatch Alarms by Region ===")
+    for region, counts in sorted(alarm_counts_by_region.items()):
+        alarm_count = counts["AlarmCount"]
+        alarms_in_alarm = counts["AlarmsInAlarmState"]
+        
+        # Try to parse the AlarmsByNamespace JSON
+        try:
+            alarms_by_namespace = json.loads(counts["AlarmsByNamespace"])
+            namespace_str = ", ".join([f"{ns}: {count}" for ns, count in alarms_by_namespace.items()])
+        except:
+            namespace_str = "Error parsing namespace data"
+        
+        report.append(f"Region {region}: {alarm_count} alarms ({alarms_in_alarm} in ALARM state)")
+        if namespace_str:
+            report.append(f"  Namespaces: {namespace_str}")
+    
+    # Add Services by Region section
+    report.append("\n=== Monitoring Services by Region ===")
+    for region, services in sorted(services_by_region.items()):
+        report.append(f"Region: {region}")
+        for service, statuses in sorted(services.items()):
+            status_str = ", ".join([f"{status}: {count}" for status, count in statuses.items() if count > 0])
+            report.append(f"  {service}: {status_str}")
+    
+    # Add Recommendations section
+    report.append("\n=== Recommendations ===")
+    for recommendation in recommendations:
+        service = recommendation.get("Service")
+        priority = recommendation.get("Priority")
+        rec_text = recommendation.get("Recommendation")
+        enabled_regions = recommendation.get("EnabledRegions", "N/A")
+        disabled_regions = recommendation.get("DisabledRegions", "N/A")
+        issue_regions = recommendation.get("IssueRegions", "N/A")
+        
+        report.append(f"[{priority}] {service}: {rec_text}")
+        if enabled_regions != "N/A":
+            report.append(f"  Enabled in: {enabled_regions}")
+        if disabled_regions != "N/A" and disabled_regions != "None":
+            report.append(f"  Disabled in: {disabled_regions}")
+        if issue_regions != "N/A" and issue_regions != "None":
+            report.append(f"  Issues in: {issue_regions}")
+    
+    return "\n".join(report)
+
 def main():
     parser = argparse.ArgumentParser(description="Analyze AWS monitoring tools")
     parser.add_argument("--profile", help="AWS CLI profile to use")
     parser.add_argument("--regions", nargs="+", help="AWS regions to analyze")
     parser.add_argument("--output", default="monitoring_findings.csv", help="Output CSV file")
     parser.add_argument("--recommendations", default="monitoring_recommendations.csv", help="Recommendations CSV file")
+    parser.add_argument("--summary", default="monitoring_summary.txt", help="Summary report file")
     args = parser.parse_args()
     
     start_time = datetime.now()
@@ -549,6 +769,11 @@ def main():
     # Export findings and recommendations
     export_to_csv(findings, args.output)
     export_to_csv(recommendations, args.recommendations)
+    
+    # Generate and save summary report
+    summary_report = generate_summary_report(findings, recommendations)
+    with open(args.summary, 'w') as f:
+        f.write(summary_report)
     
     # Print summary
     status_counts = {"Good": 0, "Info": 0, "Warning": 0, "Critical": 0, "Error": 0}
@@ -565,6 +790,10 @@ def main():
     print("\n=== Recommendations ===")
     for recommendation in recommendations:
         print(f"[{recommendation['Priority']}] {recommendation['Service']}: {recommendation['Recommendation']}")
+        if "EnabledRegions" in recommendation and recommendation["EnabledRegions"] != "N/A":
+            print(f"  Enabled in: {recommendation['EnabledRegions']}")
+    
+    print(f"\nDetailed summary report written to: {args.summary}")
     
     end_time = datetime.now()
     duration = end_time - start_time
