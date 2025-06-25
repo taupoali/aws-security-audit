@@ -14,8 +14,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 API_STATS = {"calls": 0, "timeouts": 0, "errors": 0, "cached": 0}
 API_CACHE = {}
 
-def run_aws_command(cmd, retries=2):
+def run_aws_command(cmd, profile=None, retries=2):
     """Run AWS CLI command with retries and caching"""
+    if profile:
+        cmd = ["aws", "--profile", profile] + cmd[1:]
+    
     cmd_key = ' '.join(cmd)
     if cmd_key in API_CACHE:
         API_STATS["cached"] += 1
@@ -46,15 +49,15 @@ def run_aws_command(cmd, retries=2):
                 return None
     return None
 
-def get_account_id():
+def get_account_id(profile=None):
     """Get current AWS account ID"""
-    result = run_aws_command(["aws", "sts", "get-caller-identity", "--query", "Account", "--output", "text"])
+    result = run_aws_command(["aws", "sts", "get-caller-identity", "--query", "Account", "--output", "text"], profile)
     return result.strip() if result else "unknown"
 
-def get_all_roles():
+def get_all_roles(profile=None):
     """Get all IAM roles in the account"""
     print("[INFO] Retrieving all IAM roles...")
-    result = run_aws_command(["aws", "iam", "list-roles", "--output", "json"])
+    result = run_aws_command(["aws", "iam", "list-roles", "--output", "json"], profile)
     if not result:
         print("[ERROR] Failed to retrieve IAM roles")
         return []
@@ -64,10 +67,10 @@ def get_all_roles():
     print(f"[INFO] Found {len(roles)} IAM roles")
     return roles
 
-def get_all_users():
+def get_all_users(profile=None):
     """Get all IAM users in the account"""
     print("[INFO] Retrieving all IAM users...")
-    result = run_aws_command(["aws", "iam", "list-users", "--output", "json"])
+    result = run_aws_command(["aws", "iam", "list-users", "--output", "json"], profile)
     if not result:
         print("[ERROR] Failed to retrieve IAM users")
         return []
@@ -77,12 +80,12 @@ def get_all_users():
     print(f"[INFO] Found {len(users)} IAM users")
     return users
 
-def get_role_policies(role_name):
+def get_role_policies(role_name, profile=None):
     """Get all policies (inline and managed) attached to a role"""
     policies = []
     
     # Get inline policies
-    inline_result = run_aws_command(["aws", "iam", "list-role-policies", "--role-name", role_name, "--output", "json"])
+    inline_result = run_aws_command(["aws", "iam", "list-role-policies", "--role-name", role_name, "--output", "json"], profile)
     if inline_result:
         policy_names = json.loads(inline_result).get("PolicyNames", [])
         for policy_name in policy_names:
@@ -91,7 +94,7 @@ def get_role_policies(role_name):
                 "--role-name", role_name, 
                 "--policy-name", policy_name,
                 "--output", "json"
-            ])
+            ], profile)
             if policy_result:
                 policy_data = json.loads(policy_result)
                 policies.append({
@@ -105,7 +108,7 @@ def get_role_policies(role_name):
         "aws", "iam", "list-attached-role-policies", 
         "--role-name", role_name,
         "--output", "json"
-    ])
+    ], profile)
     if managed_result:
         attached_policies = json.loads(managed_result).get("AttachedPolicies", [])
         for policy in attached_policies:
@@ -114,7 +117,7 @@ def get_role_policies(role_name):
                 "aws", "iam", "get-policy",
                 "--policy-arn", policy_arn,
                 "--output", "json"
-            ])
+            ], profile)
             
             if policy_version_result:
                 policy_data = json.loads(policy_version_result)
@@ -126,7 +129,7 @@ def get_role_policies(role_name):
                         "--policy-arn", policy_arn,
                         "--version-id", default_version,
                         "--output", "json"
-                    ])
+                    ], profile)
                     
                     if version_result:
                         version_data = json.loads(version_result)
@@ -139,12 +142,12 @@ def get_role_policies(role_name):
     
     return policies
 
-def get_user_policies(user_name):
+def get_user_policies(user_name, profile=None):
     """Get all policies (inline and managed) attached to a user"""
     policies = []
     
     # Get inline policies
-    inline_result = run_aws_command(["aws", "iam", "list-user-policies", "--user-name", user_name, "--output", "json"])
+    inline_result = run_aws_command(["aws", "iam", "list-user-policies", "--user-name", user_name, "--output", "json"], profile)
     if inline_result:
         policy_names = json.loads(inline_result).get("PolicyNames", [])
         for policy_name in policy_names:
@@ -153,7 +156,7 @@ def get_user_policies(user_name):
                 "--user-name", user_name, 
                 "--policy-name", policy_name,
                 "--output", "json"
-            ])
+            ], profile)
             if policy_result:
                 policy_data = json.loads(policy_result)
                 policies.append({
@@ -167,7 +170,7 @@ def get_user_policies(user_name):
         "aws", "iam", "list-attached-user-policies", 
         "--user-name", user_name,
         "--output", "json"
-    ])
+    ], profile)
     if managed_result:
         attached_policies = json.loads(managed_result).get("AttachedPolicies", [])
         for policy in attached_policies:
@@ -176,7 +179,7 @@ def get_user_policies(user_name):
                 "aws", "iam", "get-policy",
                 "--policy-arn", policy_arn,
                 "--output", "json"
-            ])
+            ], profile)
             
             if policy_version_result:
                 policy_data = json.loads(policy_version_result)
@@ -188,7 +191,7 @@ def get_user_policies(user_name):
                         "--policy-arn", policy_arn,
                         "--version-id", default_version,
                         "--output", "json"
-                    ])
+                    ], profile)
                     
                     if version_result:
                         version_data = json.loads(version_result)
@@ -201,15 +204,15 @@ def get_user_policies(user_name):
     
     return policies
 
-def get_role_trust_policy(role_name):
+def get_role_trust_policy(role_name, profile=None):
     """Get the trust policy for a role"""
-    result = run_aws_command(["aws", "iam", "get-role", "--role-name", role_name, "--output", "json"])
+    result = run_aws_command(["aws", "iam", "get-role", "--role-name", role_name, "--output", "json"], profile)
     if result:
         role_data = json.loads(result)
         return role_data.get("Role", {}).get("AssumeRolePolicyDocument", {})
     return {}
 
-def identify_elevated_privileges(roles, users):
+def identify_elevated_privileges(roles, users, profile=None):
     """Identify accounts and roles with elevated privileges"""
     print("[INFO] Identifying entities with elevated privileges...")
     elevated_entities = []
@@ -223,7 +226,7 @@ def identify_elevated_privileges(roles, users):
     # Check roles
     for role in roles:
         role_name = role.get("RoleName")
-        policies = get_role_policies(role_name)
+        policies = get_role_policies(role_name, profile)
         
         # Track admin permissions
         admin_permissions = []
@@ -282,7 +285,7 @@ def identify_elevated_privileges(roles, users):
     # Check users
     for user in users:
         user_name = user.get("UserName")
-        policies = get_user_policies(user_name)
+        policies = get_user_policies(user_name, profile)
         
         # Track admin permissions
         admin_permissions = []
@@ -343,7 +346,7 @@ def identify_elevated_privileges(roles, users):
     print(f"[INFO] Found {len(elevated_entities)} entities with elevated privileges")
     return elevated_entities
 
-def analyze_trust_policy_conditions(roles):
+def analyze_trust_policy_conditions(roles, profile=None):
     """Analyze conditions in trust policies for roles"""
     print("[INFO] Analyzing trust policy conditions...")
     condition_findings = []
@@ -353,7 +356,7 @@ def analyze_trust_policy_conditions(roles):
         trust_policy = role.get("AssumeRolePolicyDocument", {})
         
         if not trust_policy:
-            trust_policy = get_role_trust_policy(role_name)
+            trust_policy = get_role_trust_policy(role_name, profile)
         
         statements = trust_policy.get("Statement", [])
         if not isinstance(statements, list):
@@ -723,6 +726,7 @@ def load_escalation_chains(chains_file):
 
 def main():
     parser = argparse.ArgumentParser(description="Analyze IAM risk and security posture")
+    parser.add_argument("--profile", help="AWS CLI profile to use")
     parser.add_argument("--output-dir", default=".", help="Directory to save output files")
     parser.add_argument("--chains-file", help="CSV file with escalation chains from detect_chain_escalation_parallel.py")
     parser.add_argument("--html-report", action="store_true", help="Generate HTML report")
@@ -730,10 +734,12 @@ def main():
     
     start_time = datetime.now()
     print(f"[{start_time}] Starting IAM risk analysis...")
+    if args.profile:
+        print(f"Using AWS profile: {args.profile}")
     
     # Get all roles and users
-    roles = get_all_roles()
-    users = get_all_users()
+    roles = get_all_roles(args.profile)
+    users = get_all_users(args.profile)
     
     if not roles and not users:
         print("[ERROR] No roles or users found. Exiting.")
@@ -745,11 +751,11 @@ def main():
         chains = load_escalation_chains(args.chains_file)
     
     # Identify entities with elevated privileges
-    elevated_entities = identify_elevated_privileges(roles, users)
+    elevated_entities = identify_elevated_privileges(roles, users, args.profile)
     export_findings_to_csv(elevated_entities, f"{args.output_dir}/elevated_privileges.csv")
     
     # Analyze trust policy conditions
-    condition_findings = analyze_trust_policy_conditions(roles)
+    condition_findings = analyze_trust_policy_conditions(roles, args.profile)
     export_findings_to_csv(condition_findings, f"{args.output_dir}/trust_policy_conditions.csv")
     
     # Calculate risk scores
