@@ -334,8 +334,14 @@ def export_to_csv(data, filename):
         print(f"[WARNING] No data to export to {filename}")
         return
     
+    # Get all possible fieldnames from all records
+    fieldnames = set()
+    for record in data:
+        fieldnames.update(record.keys())
+    fieldnames = sorted(list(fieldnames))
+    
     with open(filename, 'w', newline='') as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=data[0].keys())
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(data)
     
