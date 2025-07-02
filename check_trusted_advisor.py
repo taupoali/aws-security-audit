@@ -40,11 +40,19 @@ def write_results_to_csv(checks_with_results, output_file):
         for check_name, results in checks_with_results:
             flagged = results.get("result", {}).get("flaggedResources", [])
             for resource in flagged:
+                # Handle None values by converting to empty string
+                metadata = resource.get("metadata", [])
+                if metadata:
+                    # Filter out None values and convert to strings
+                    metadata_str = " | ".join([str(item) for item in metadata if item is not None])
+                else:
+                    metadata_str = ""
+                
                 writer.writerow([
-                    check_name,
-                    resource.get("resourceId", ""),
-                    resource.get("status", ""),
-                    " | ".join(resource.get("metadata", []))
+                    check_name or "",
+                    resource.get("resourceId", "") or "",
+                    resource.get("status", "") or "",
+                    metadata_str
                 ])
 
 def main():
