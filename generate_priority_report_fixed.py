@@ -233,10 +233,6 @@ def is_expected_service_behavior(row, pattern, role_name):
 
 def get_service_dependency(pattern, row, role_name):
     """Determine service dependency for a finding with detailed context"""
-    # Debug: print what we're checking
-    if role_name and "aft-" in role_name.lower():
-        print(f"[DEBUG] Checking role: '{role_name}'")
-    
     # Check if this represents expected AWS service behavior
     expected_behavior = is_expected_service_behavior(row, pattern, role_name)
     if expected_behavior:
@@ -250,14 +246,9 @@ def get_service_dependency(pattern, row, role_name):
     # Check if this is an AWS service role with detailed context
     service_info = is_aws_service_role(role_name)
     if service_info:
-        if role_name and "aft-" in role_name.lower():
-            print(f"[DEBUG] Found service info for {role_name}: {service_info}")
         service_name = service_info["description"]
         function = service_info["function"]
         return f"{service_name} - {function}"
-    else:
-        if role_name and "aft-" in role_name.lower():
-            print(f"[DEBUG] No service info found for {role_name}")
     
     # Check for specific service dependencies based on content
     row_str = str(row).lower()
