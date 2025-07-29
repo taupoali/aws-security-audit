@@ -473,7 +473,7 @@ def create_priority_summary(findings):
     
     return summary
 
-def generate_readable_report(summary, output_file):
+def generate_readable_report(summary, output_file, max_items=20):
     """Generate a human-readable priority report"""
     with open(output_file, 'w') as f:
         f.write("=" * 60 + "\n")
@@ -605,7 +605,7 @@ def generate_readable_report(summary, output_file):
             
             if critical_chains:
                 f.write(f"CRITICAL ESCALATION CHAINS ({len(critical_chains)}):\n")
-                for i, finding in enumerate(critical_chains[:max_items//2], 1):
+                for i, finding in enumerate(critical_chains[:10], 1):
                     path = finding.get('Path') or finding.get('Chain') or 'Unknown path'
                     target = finding.get('Target Privileged Role') or finding.get('TargetPrivilegedRole') or 'Admin role'
                     f.write(f"{i}. {path} -> {target}\n")
@@ -613,7 +613,7 @@ def generate_readable_report(summary, output_file):
             
             if high_chains:
                 f.write(f"HIGH RISK ESCALATION CHAINS ({len(high_chains)}):\n")
-                for i, finding in enumerate(high_chains[:max_items//3], 1):
+                for i, finding in enumerate(high_chains[:5], 1):
                     path = finding.get('Path') or finding.get('Chain') or 'Unknown path'
                     target = finding.get('Target Privileged Role') or finding.get('TargetPrivilegedRole') or 'Privileged role'
                     f.write(f"{i}. {path} -> {target}\n")
