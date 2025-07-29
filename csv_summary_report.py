@@ -11,9 +11,9 @@ AWS_SERVICE_ROLES = {
         "patterns": ["AWSControlTowerExecution", "AWSControlTowerStackSetRole", "AWSControlTowerCloudTrailRole", "aws-controltower-", "AWSControlTowerAdmin"],
         "description": "AWS Control Tower service for centralized multi-account governance"
     },
-    "identity_center": {
-        "patterns": ["AWSReservedSSO_", "aws-reserved-sso", "AWSServiceRoleForSSO", "AWSServiceRoleForIdentityStore"],
-        "description": "AWS IAM Identity Center (SSO) for centralized access management"
+    "identity_center_service": {
+        "patterns": ["AWSServiceRoleForSSO", "AWSServiceRoleForIdentityStore"],
+        "description": "AWS IAM Identity Center (SSO) service role for centralized access management"
     },
     "account_factory": {
         "patterns": ["AWSControlTowerAccountFactory", "AccountFactory", "AWSAFTExecution", "aft-", "AFT-"],
@@ -39,10 +39,16 @@ def get_service_dependency(role_name):
         return "No service dependency identified"
     
     role_name_lower = role_name.lower()
+    
+    # Check for AWS service roles first
     for service, service_info in AWS_SERVICE_ROLES.items():
         for pattern in service_info["patterns"]:
             if pattern.lower() in role_name_lower:
                 return service_info["description"]
+    
+    # Check for Identity Center user roles (created from AD groups/permission sets)
+    if "awsreservedsso_" in role_name_lower:
+        return "Identity Center user role - created from AD group to permission set mapping"
     
     return "No service dependency identified"
 
