@@ -52,10 +52,11 @@ AWS_SERVICE_ROLES = {
         "patterns": [
             "AWSControlTowerExecution", "AWSControlTowerStackSetRole", "AWSControlTowerCloudTrailRole",
             "AWSControlTowerConfigAggregatorRoleForOrganizations", "aws-controltower-", "ControlTowerExecution",
-            "AWSControlTowerBP-", "StackSet-AWSControlTower", "AWSControlTowerAdmin", "AWSAFTExecution"
+            "AWSControlTowerBP-", "StackSet-AWSControlTower", "AWSControlTowerAdmin", "AWSAFTExecution",
+            "AWSControlTowerServiceRole", "AWSControlTowerLoggingRole", "AWSControlTowerSecurityRole"
         ],
         "description": "AWS Control Tower service for centralized multi-account governance",
-        "function": "Manages account provisioning, guardrails, and organizational compliance"
+        "function": "Manages account provisioning, guardrails, organizational compliance, and landing zone operations"
     },
     "identity_center": {
         "patterns": [
@@ -90,10 +91,13 @@ AWS_SERVICE_ROLES = {
     "account_factory": {
         "patterns": [
             "AWSControlTowerAccountFactory", "AccountFactory", "ServiceCatalogEndUser", "AWSServiceCatalogEndUser",
-            "AWSAFTExecution"
+            "AWSAFTExecution", "aft-account-provisioning-framework-lambda-", "aft-account-request-framework-",
+            "aft-customizations-framework-", "aft-account-provisioning-customizations-", "aft-invoke-aft-account-provisioning-framework-",
+            "aft-cleanup-resources-", "aft-feature-options-", "aft-global-customizations-", "aft-account-baseline-",
+            "aft-ssm-execution-role", "aft-states-", "aft-pipeline-", "aft-codebuild-", "aft-vpc-"
         ],
-        "description": "AWS Control Tower Account Factory for automated account provisioning",
-        "function": "Automates AWS account creation and baseline configuration deployment"
+        "description": "AWS Control Tower Account Factory for Terraform (AFT) - automated account provisioning framework",
+        "function": "Orchestrates account creation, customizations, baseline configurations, and Terraform deployments across AWS accounts"
     },
     "firewall_manager": {
         "patterns": [
@@ -129,6 +133,34 @@ AWS_SERVICE_ROLES = {
         ],
         "description": "AWS Systems Manager for operational management",
         "function": "Manages EC2 instances, patches, and operational tasks across infrastructure"
+    },
+    "lambda_execution": {
+        "patterns": [
+            "lambda-execution-role", "LambdaExecutionRole", "aft-lambda-", "lambda-role-"
+        ],
+        "description": "AWS Lambda execution roles for serverless function operations",
+        "function": "Provides Lambda functions with permissions to execute and access AWS services"
+    },
+    "codebuild": {
+        "patterns": [
+            "codebuild-", "CodeBuildServiceRole", "aft-codebuild-"
+        ],
+        "description": "AWS CodeBuild service for continuous integration and build automation",
+        "function": "Compiles source code, runs tests, and produces deployment artifacts"
+    },
+    "codepipeline": {
+        "patterns": [
+            "codepipeline-", "CodePipelineServiceRole", "aft-pipeline-"
+        ],
+        "description": "AWS CodePipeline service for continuous delivery automation",
+        "function": "Orchestrates build, test, and deployment workflows across environments"
+    },
+    "step_functions": {
+        "patterns": [
+            "StepFunctionsExecutionRole", "states-", "aft-states-"
+        ],
+        "description": "AWS Step Functions for workflow orchestration",
+        "function": "Coordinates distributed applications and microservices using visual workflows"
     }
 }
 
@@ -145,9 +177,9 @@ EXPECTED_SERVICE_CONFIGS = {
         "expected_permissions": ["*", "sts:AssumeRole", "sts:AssumeRoleWithSAML"]
     },
     "account_factory_permissions": {
-        "description": "Account Factory requires broad permissions for account provisioning",
-        "expected_principals": ["servicecatalog.amazonaws.com", "controltower.amazonaws.com"],
-        "expected_permissions": ["organizations:*", "iam:*", "sts:AssumeRole"]
+        "description": "Account Factory for Terraform (AFT) requires broad permissions for automated account provisioning and customization",
+        "expected_principals": ["servicecatalog.amazonaws.com", "controltower.amazonaws.com", "lambda.amazonaws.com", "codebuild.amazonaws.com", "states.amazonaws.com"],
+        "expected_permissions": ["organizations:*", "iam:*", "sts:AssumeRole", "servicecatalog:*", "ssm:*", "s3:*", "dynamodb:*"]
     }
 }
 
