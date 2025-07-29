@@ -466,9 +466,9 @@ def create_priority_summary(findings):
         source = finding.get("SourceFile", "unknown")
         summary["by_source"][source] += 1
     
-    # Get top 20 critical findings
+    # Get top critical findings
     critical_findings = [f for f in findings if f["Severity"] == "CRITICAL"]
-    summary["top_critical"] = critical_findings[:20]
+    summary["top_critical"] = critical_findings
     summary["all_findings"] = findings
     
     return summary
@@ -678,6 +678,103 @@ def generate_readable_report(summary, output_file, max_items=20):
         f.write("=" * 60 + "\n")
         f.write("END OF PRIORITY REPORT\n")
         f.write("=" * 60 + "\n")
+
+def generate_html_report(summary, output_file, max_items):
+    """Generate HTML version of the priority report"""
+    html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AWS Security Audit - Priority Findings Report</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }}
+        .container {{ max-width: 1200px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+        .header {{ text-align: center; color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 20px; margin-bottom: 30px; }}
+        .section {{ margin-bottom: 40px; }}
+        .section h2 {{ color: #2c3e50; border-left: 4px solid #3498db; padding-left: 15px; }}
+        .critical {{ background-color: #ffebee; border-left: 4px solid #f44336; padding: 15px; margin: 10px 0; }}
+        .high {{ background-color: #fff3e0; border-left: 4px solid #ff9800; padding: 15px; margin: 10px 0; }}
+        .expected {{ background-color: #e8f5e8; border-left: 4px solid #4caf50; padding: 15px; margin: 10px 0; }}
+        .finding {{ margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }}
+        .finding-title {{ font-weight: bold; color: #2c3e50; margin-bottom: 10px; }}
+        .finding-details {{ color: #666; margin: 5px 0; }}
+        .action {{ background-color: #f8f9fa; padding: 10px; border-radius: 4px; margin-top: 10px; }}
+        .stats {{ display: flex; justify-content: space-around; margin: 20px 0; }}
+        .stat-box {{ text-align: center; padding: 20px; background-color: #ecf0f1; border-radius: 8px; }}
+        .stat-number {{ font-size: 2em; font-weight: bold; color: #2c3e50; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>AWS Security Audit - Priority Findings Report</h1>
+            <p>Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+        </div>
+
+        <div class="section">
+            <h2>Executive Summary</h2>
+            <div class="stats">
+                <div class="stat-box">
+                    <div class="stat-number">{summary['total_count']}</div>
+                    <div>Total Findings</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-number">{summary['non_trusted_advisor_count']}</div>
+                    <div>Security Findings</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-number">{summary['critical_count']}</div>
+                    <div>Critical Findings</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-number">{summary['high_count']}</div>
+                    <div>High Priority</div>
+                </div>
+            </div>
+        </div>
+"""
+
+    # Top Critical Findings
+    if summary['top_critical']:
+        html_content += f"""
+        <div class="section">
+            <h2>Top {min(len(summary['top_critical']), max_items)} Critical Findings</h2>
+"""
+        for i, finding in enumerate(summary['top_critical'][:max_items], 1):
+            severity_class = "expected" if "EXPECTED BEHAVIOR" in finding.get('ActionableResponse', '') or "AWS SERVICE ROLE" in finding.get('ActionableResponse', '') else "critical"
+            
+            html_content += f"""
+            <div class="finding {severity_class}">
+                <div class="finding-title">{i}. {finding.get('ProblemSummary', finding['Reason'])}</div>
+"""
+            
+            # Show key details
+            key_details = []
+            for key in ["RoleName", "Resource", "Title", "Path", "Principal"]:
+                if key in finding and finding[key]:
+                    key_details.append(f"{key}: {finding[key]}")
+            
+            if key_details:
+                html_content += f'<div class="finding-details"><strong>Details:</strong> {" | ".join(key_details[:3])}</div>'
+            
+            html_content += f"""
+                <div class="finding-details"><strong>Source:</strong> {finding.get('SourceFile', 'unknown')}</div>
+                <div class="finding-details"><strong>Impact:</strong> {finding['Reason']}</div>
+                <div class="finding-details"><strong>Service Dependency:</strong> {finding.get('ServiceDependency', 'None identified')}</div>
+                <div class="action"><strong>Action:</strong> {finding.get('ActionableResponse', 'Review and remediate')}</div>
+            </div>
+"""
+        
+        html_content += "</div>"
+
+    html_content += """
+    </div>
+</body>
+</html>
+"""
+    
+    with open(output_file, 'w', encoding='utf-8') as f:
+        f.write(html_content)
 
 def main():
     parser = argparse.ArgumentParser(description="Generate priority security findings report")
