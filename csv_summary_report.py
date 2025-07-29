@@ -228,6 +228,9 @@ def generate_html_report(csv_summaries, output_file):
         .toggle-icon {{ float: right; transition: transform 0.3s; }}
         .toggle-icon.expanded {{ transform: rotate(180deg); }}
         .finding {{ background-color: #f8f9fa; border-left: 4px solid #007bff; padding: 15px; margin: 10px 0; border-radius: 4px; }}
+        .finding p {{ margin: 8px 0; line-height: 1.4; }}
+        .finding strong {{ color: #2c3e50; }}
+        .details {{ font-family: 'Courier New', Consolas, Monaco, monospace; background-color: #f1f3f4; padding: 8px; border-radius: 3px; border: 1px solid #d1d5db; font-size: 0.9em; }}
         .service-role {{ border-left-color: #28a745; }}
         .stats {{ display: flex; justify-content: space-around; margin: 20px 0; }}
         .stat-box {{ text-align: center; padding: 20px; background-color: #ecf0f1; border-radius: 8px; }}
@@ -271,7 +274,8 @@ def generate_html_report(csv_summaries, output_file):
             <div class="finding {service_class}">
                 <h4>{i}. {finding['role_name']}</h4>
                 <p><strong>Description:</strong> {finding['description']}</p>
-                <p><strong>Details:</strong> {finding['details']}</p>
+                <div><strong>Details:</strong></div>
+                <div class="details">{finding['details']}</div>
                 <p><strong>Service Dependency:</strong> {finding['service_dependency']}</p>
                 <p><strong>Action:</strong> {finding['action']}</p>
             </div>
