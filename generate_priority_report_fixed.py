@@ -50,20 +50,45 @@ def load_csv_data(file_path):
 AWS_SERVICE_ROLES = {
     "control_tower": [
         "AWSControlTowerExecution", "AWSControlTowerStackSetRole", "AWSControlTowerCloudTrailRole",
-        "AWSControlTowerConfigAggregatorRoleForOrganizations", "aws-controltower-"
+        "AWSControlTowerConfigAggregatorRoleForOrganizations", "aws-controltower-", "ControlTowerExecution",
+        "AWSControlTowerBP-", "StackSet-AWSControlTower", "AWSControlTowerAdmin"
     ],
     "identity_center": [
-        "AWSReservedSSO_", "aws-reserved-sso", "AWSServiceRoleForSSO", "AWSServiceRoleForIdentityStore"
+        "AWSReservedSSO_", "aws-reserved-sso", "AWSServiceRoleForSSO", "AWSServiceRoleForIdentityStore",
+        "AWSSSORoleForIdentityCenter", "PermissionSet", "AccountAssignment"
     ],
     "organizations": [
-        "OrganizationAccountAccessRole", "AWSServiceRoleForOrganizations"
+        "OrganizationAccountAccessRole", "AWSServiceRoleForOrganizations", "OrganizationFormationRole",
+        "AWSOrganizationsServiceRole"
     ],
     "config": [
-        "AWSServiceRoleForConfig", "aws-config-role", "ConfigRole"
+        "AWSServiceRoleForConfig", "aws-config-role", "ConfigRole", "AWSConfigRole"
     ],
     "cloudtrail": [
-        "CloudTrail_CloudWatchLogsRole", "AWSServiceRoleForCloudTrail"
+        "CloudTrail_CloudWatchLogsRole", "AWSServiceRoleForCloudTrail", "CloudTrailRole"
+    ],
+    "account_factory": [
+        "AWSControlTowerAccountFactory", "AccountFactory", "ServiceCatalogEndUser", "AWSServiceCatalogEndUser"
     ]
+}
+
+# Expected configurations for AWS services (what should be considered normal)
+EXPECTED_SERVICE_CONFIGS = {
+    "control_tower_cross_account": {
+        "description": "Control Tower requires cross-account access to manage member accounts",
+        "expected_principals": ["organizations.amazonaws.com", "controltower.amazonaws.com"],
+        "expected_permissions": ["*", "sts:AssumeRole", "organizations:*"]
+    },
+    "identity_center_wildcards": {
+        "description": "Identity Center requires wildcard permissions for dynamic role creation",
+        "expected_principals": ["sso.amazonaws.com", "identitystore.amazonaws.com"],
+        "expected_permissions": ["*", "sts:AssumeRole", "sts:AssumeRoleWithSAML"]
+    },
+    "account_factory_permissions": {
+        "description": "Account Factory requires broad permissions for account provisioning",
+        "expected_principals": ["servicecatalog.amazonaws.com", "controltower.amazonaws.com"],
+        "expected_permissions": ["organizations:*", "iam:*", "sts:AssumeRole"]
+    }
 }
 
 def is_aws_service_role(role_name):
@@ -79,6 +104,39 @@ def is_aws_service_role(role_name):
                 return service
     return None
 
+def is_expected_service_behavior(row, pattern, role_name):
+    """Check if the finding represents expected AWS service behavior"""
+    if not role_name:
+        return None
+    
+    service_type = is_aws_service_role(role_name)
+    if not service_type:
+        return None
+    
+    row_str = str(row).lower()
+    principal = str(row.get("Principal", "")).lower()
+    
+    # Check for expected Control Tower behavior
+    if service_type == "control_tower":
+        if pattern == "external_access" and any(svc in principal for svc in ["organizations.amazonaws.com", "controltower.amazonaws.com", "root"]):
+            return "control_tower_cross_account"
+        if pattern == "public_admin_access" and any(perm in row_str for perm in ["*", "organizations:", "sts:assumerole"]):
+            return "control_tower_cross_account"
+    
+    # Check for expected Identity Center behavior
+    if service_type == "identity_center":
+        if pattern == "public_admin_access" and any(perm in row_str for perm in ["*", "sts:assumerole", "saml"]):
+            return "identity_center_wildcards"
+        if pattern == "external_access" and any(svc in principal for svc in ["sso.amazonaws.com", "identitystore.amazonaws.com"]):
+            return "identity_center_wildcards"
+    
+    # Check for expected Account Factory behavior
+    if service_type == "account_factory":
+        if pattern == "public_admin_access" and any(perm in row_str for perm in ["organizations:", "iam:", "servicecatalog:"]):
+            return "account_factory_permissions"
+    
+    return None
+
 def generate_actionable_response(pattern, row, filename):
     """Generate specific actionable response based on CSV data"""
     filename_lower = filename.lower()
@@ -89,10 +147,17 @@ def generate_actionable_response(pattern, row, filename):
     principal = row.get("Principal") or row.get("ExternalPrincipal") or row.get("External Principals") or ""
     title = row.get("Title") or row.get("Finding") or ""
     
-    # Check if this is an AWS service role
+    # Check if this represents expected AWS service behavior
+    expected_behavior = is_expected_service_behavior(row, pattern, role_name)
+    if expected_behavior:
+        config_info = EXPECTED_SERVICE_CONFIGS.get(expected_behavior, {})
+        description = config_info.get("description", "Required for AWS service functionality")
+        return f"EXPECTED BEHAVIOR: '{role_name}' - {description}. This configuration is required and should not be modified."
+    
+    # Check if this is an AWS service role (fallback)
     service_type = is_aws_service_role(role_name)
     if service_type:
-        return f"INFORMATIONAL: '{role_name}' is an AWS {service_type.replace('_', ' ').title()} service role with required permissions. No action needed - this is expected behavior."
+        return f"AWS SERVICE ROLE: '{role_name}' is an AWS {service_type.replace('_', ' ').title()} service role. Verify this configuration is required before making changes."
     
     if pattern == "privilege_escalation":
         if path and target_role:
@@ -464,31 +529,27 @@ def generate_readable_report(summary, output_file):
         
         f.write("\n")
         
-        # Findings by Source File with top critical finding
-        f.write("FINDINGS BY AUDIT COMPONENT\n")
-        f.write("-" * 30 + "\n")
-        
-        # Group findings by source file
-        findings_by_source = defaultdict(list)
-        for finding in summary.get('all_findings', []):
-            source = finding.get('SourceFile', 'unknown')
-            findings_by_source[source].append(finding)
-        
-        sorted_sources = sorted(summary['by_source'].items(), key=lambda x: x[1], reverse=True)
-        for source, count in sorted_sources[:10]:
-            f.write(f"{source}: {count} findings\n")
+        # High Priority Findings Summary (non-critical but important)
+        high_priority_findings = [f for f in summary.get('all_findings', []) if f.get('Severity') == 'HIGH']
+        if high_priority_findings:
+            f.write("HIGH PRIORITY FINDINGS SUMMARY\n")
+            f.write("-" * 35 + "\n")
+            f.write(f"Found {len(high_priority_findings)} high priority security issues requiring attention:\n\n")
             
-            # Find most critical finding in this source
-            source_findings = findings_by_source.get(source, [])
-            if source_findings:
-                # Sort by severity
-                severity_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
-                source_findings.sort(key=lambda x: severity_order.get(x["Severity"], 4))
-                top_finding = source_findings[0]
+            for i, finding in enumerate(high_priority_findings[:15], 1):
+                f.write(f"{i}. {finding.get('ProblemSummary', finding['Reason'])}\n")
                 
-                f.write(f"   Most Critical: {top_finding.get('ProblemSummary', 'Unknown issue')}\n")
-                f.write(f"   Severity: {top_finding['Severity']}\n")
-            f.write("\n")
+                # Show key details
+                key_details = []
+                for key in ["RoleName", "Resource", "Title", "Path", "Principal"]:
+                    if key in finding and finding[key]:
+                        key_details.append(f"{key}: {finding[key]}")
+                
+                if key_details:
+                    f.write(f"   Details: {' | '.join(key_details[:3])}\n")
+                
+                f.write(f"   Impact: {finding['Reason']}\n")
+                f.write(f"   Action: {finding.get('ActionableResponse', 'Review and remediate')}\n\n")
         
         f.write("\n")
         
