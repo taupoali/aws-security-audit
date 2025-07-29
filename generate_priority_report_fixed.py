@@ -495,9 +495,9 @@ def generate_readable_report(summary, output_file, max_items=20):
         
         # Top Critical Findings
         if summary['top_critical']:
-            f.write("TOP 20 CRITICAL FINDINGS (IMMEDIATE ATTENTION)\n")
+            f.write(f"TOP {min(len(summary['top_critical']), max_items)} CRITICAL FINDINGS (IMMEDIATE ATTENTION)\n")
             f.write("-" * 50 + "\n")
-            for i, finding in enumerate(summary['top_critical'], 1):
+            for i, finding in enumerate(summary['top_critical'][:max_items], 1):
                 f.write(f"{i}. {finding.get('ProblemSummary', finding['Reason'])}\n")
                 
                 # Show key details
@@ -545,7 +545,7 @@ def generate_readable_report(summary, output_file, max_items=20):
             critical_findings = [f for f in pattern_findings if f["Severity"] == "CRITICAL"]
             if critical_findings:
                 f.write(f"   Top Critical Issues in {pattern_name}:\n")
-                for i, finding in enumerate(critical_findings[:10], 1):
+                for i, finding in enumerate(critical_findings[:max_items//2], 1):
                     f.write(f"   {i}. {finding.get('ProblemSummary', 'Unknown issue')}\n")
                     
                     # Show key details
@@ -572,7 +572,7 @@ def generate_readable_report(summary, output_file, max_items=20):
             f.write("-" * 35 + "\n")
             f.write(f"Found {len(high_priority_findings)} high priority security issues requiring attention:\n\n")
             
-            for i, finding in enumerate(high_priority_findings[:15], 1):
+            for i, finding in enumerate(high_priority_findings[:max_items], 1):
                 f.write(f"{i}. {finding.get('ProblemSummary', finding['Reason'])}\n")
                 
                 # Show key details
@@ -605,7 +605,7 @@ def generate_readable_report(summary, output_file, max_items=20):
             
             if critical_chains:
                 f.write(f"CRITICAL ESCALATION CHAINS ({len(critical_chains)}):\n")
-                for i, finding in enumerate(critical_chains[:10], 1):
+                for i, finding in enumerate(critical_chains[:max_items//2], 1):
                     path = finding.get('Path') or finding.get('Chain') or 'Unknown path'
                     target = finding.get('Target Privileged Role') or finding.get('TargetPrivilegedRole') or 'Admin role'
                     f.write(f"{i}. {path} -> {target}\n")
@@ -613,7 +613,7 @@ def generate_readable_report(summary, output_file, max_items=20):
             
             if high_chains:
                 f.write(f"HIGH RISK ESCALATION CHAINS ({len(high_chains)}):\n")
-                for i, finding in enumerate(high_chains[:5], 1):
+                for i, finding in enumerate(high_chains[:max_items//3], 1):
                     path = finding.get('Path') or finding.get('Chain') or 'Unknown path'
                     target = finding.get('Target Privileged Role') or finding.get('TargetPrivilegedRole') or 'Privileged role'
                     f.write(f"{i}. {path} -> {target}\n")
@@ -683,6 +683,8 @@ def main():
     parser = argparse.ArgumentParser(description="Generate priority security findings report")
     parser.add_argument("--data-dir", default=".", help="Directory containing CSV files")
     parser.add_argument("--output", default="PRIORITY_SECURITY_REPORT.txt", help="Output report file")
+    parser.add_argument("--max", type=int, default=20, help="Maximum number of items to show in each section")
+    parser.add_argument("--html", action="store_true", help="Generate HTML report in addition to text report")
     args = parser.parse_args()
     
     print(f"[INFO] Scanning for CSV files in: {args.data_dir}")
@@ -707,7 +709,13 @@ def main():
     summary = create_priority_summary(all_findings)
     
     # Generate readable report
-    generate_readable_report(summary, args.output)
+    generate_readable_report(summary, args.output, args.max)
+    
+    # Generate HTML report if requested
+    if args.html:
+        html_output = args.output.replace('.txt', '.html')
+        generate_html_report(summary, html_output, args.max)
+        print(f"[SUCCESS] HTML report generated: {html_output}")
     
     print(f"\n[SUCCESS] Priority report generated: {args.output}")
     print(f"[INFO] Total findings analyzed: {summary['total_count']}")
