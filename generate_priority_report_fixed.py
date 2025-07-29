@@ -46,6 +46,39 @@ def load_csv_data(file_path):
         print(f"Error loading {file_path}: {e}")
         return []
 
+# AWS service role patterns that should not be modified
+AWS_SERVICE_ROLES = {
+    "control_tower": [
+        "AWSControlTowerExecution", "AWSControlTowerStackSetRole", "AWSControlTowerCloudTrailRole",
+        "AWSControlTowerConfigAggregatorRoleForOrganizations", "aws-controltower-"
+    ],
+    "identity_center": [
+        "AWSReservedSSO_", "aws-reserved-sso", "AWSServiceRoleForSSO", "AWSServiceRoleForIdentityStore"
+    ],
+    "organizations": [
+        "OrganizationAccountAccessRole", "AWSServiceRoleForOrganizations"
+    ],
+    "config": [
+        "AWSServiceRoleForConfig", "aws-config-role", "ConfigRole"
+    ],
+    "cloudtrail": [
+        "CloudTrail_CloudWatchLogsRole", "AWSServiceRoleForCloudTrail"
+    ]
+}
+
+def is_aws_service_role(role_name):
+    """Check if a role is an AWS service role that should not be modified"""
+    if not role_name:
+        return False
+    
+    role_name_lower = role_name.lower()
+    
+    for service, patterns in AWS_SERVICE_ROLES.items():
+        for pattern in patterns:
+            if pattern.lower() in role_name_lower:
+                return service
+    return None
+
 def generate_actionable_response(pattern, row, filename):
     """Generate specific actionable response based on CSV data"""
     filename_lower = filename.lower()
@@ -55,6 +88,11 @@ def generate_actionable_response(pattern, row, filename):
     target_role = row.get("Target Privileged Role") or row.get("TargetPrivilegedRole") or ""
     principal = row.get("Principal") or row.get("ExternalPrincipal") or row.get("External Principals") or ""
     title = row.get("Title") or row.get("Finding") or ""
+    
+    # Check if this is an AWS service role
+    service_type = is_aws_service_role(role_name)
+    if service_type:
+        return f"INFORMATIONAL: '{role_name}' is an AWS {service_type.replace('_', ' ').title()} service role with required permissions. No action needed - this is expected behavior."
     
     if pattern == "privilege_escalation":
         if path and target_role:
@@ -70,6 +108,11 @@ def generate_actionable_response(pattern, row, filename):
             return f"Review and remove excessive IAM permissions from '{role_name}' that allow privilege escalation"
     
     elif pattern == "public_admin_access":
+        # Check if this is an AWS service role first
+        service_type = is_aws_service_role(role_name)
+        if service_type:
+            return f"INFORMATIONAL: '{role_name}' is an AWS {service_type.replace('_', ' ').title()} service role. Wildcard permissions are required for service functionality. No action needed."
+        
         if "s3" in filename_lower and resource:
             return f"Remove public-read/public-write ACL from S3 bucket '{resource}' and set bucket policy to deny public access"
         elif "iam" in filename_lower and role_name:
@@ -96,10 +139,15 @@ def generate_actionable_response(pattern, row, filename):
             return f"Address compliance violation: {title or 'Review specific finding details'}"
     
     elif pattern == "external_access":
+        # Check if this is an AWS service role first
+        service_type = is_aws_service_role(role_name)
+        if service_type:
+            return f"INFORMATIONAL: '{role_name}' is an AWS {service_type.replace('_', ' ').title()} service role. Cross-account access is required for service functionality. No action needed."
+        
         if principal and role_name:
             if "root" in principal:
                 account_id = principal.split("::")[1].split(":")[0] if "::" in principal else "external account"
-                return f"Remove root access from {account_id} or add ExternalId condition to trust policy of '{role_name}'"
+                return f"Review if root access from {account_id} is necessary for '{role_name}'. If required for Control Tower/SSO, no action needed. Otherwise, add ExternalId condition."
             else:
                 return f"Add conditions (aws:SourceIp, aws:RequestedRegion, sts:ExternalId) to trust policy allowing '{principal}' access to '{role_name}'"
         else:
@@ -163,15 +211,28 @@ def analyze_finding_severity(row, filename):
     """Analyze a single finding for severity"""
     row_text = str(row).lower()
     filename_lower = filename.lower()
+    role_name = row.get("RoleName") or row.get("Role Name") or row.get("EntityName") or "Unknown"
+    
+    # Check if this is an AWS service role - reduce severity if it is
+    service_type = is_aws_service_role(role_name)
     
     # Check for critical patterns
     for pattern_name, pattern_info in CRITICAL_PATTERNS.items():
         if any(keyword in row_text or keyword in filename_lower for keyword in pattern_info["keywords"]):
             problem_summary = generate_problem_summary(row, filename, pattern_name)
             actionable_response = generate_actionable_response(pattern_name, row, filename)
+            
+            # Reduce severity for AWS service roles
+            severity = pattern_info["severity"]
+            if service_type:
+                if severity == "CRITICAL":
+                    severity = "LOW"  # Service roles with expected permissions
+                elif severity == "HIGH":
+                    severity = "LOW"
+            
             return {
-                "severity": pattern_info["severity"],
-                "reason": pattern_info["description"],
+                "severity": severity,
+                "reason": pattern_info["description"] + (f" (AWS {service_type.replace('_', ' ').title()} Service Role)" if service_type else ""),
                 "pattern": pattern_name,
                 "problem_summary": problem_summary,
                 "actionable_response": actionable_response
@@ -372,6 +433,71 @@ def generate_readable_report(summary, output_file):
                 f.write(f"   Most Critical: {top_finding.get('ProblemSummary', 'Unknown issue')}\n")
                 f.write(f"   Severity: {top_finding['Severity']}\n")
             f.write("\n")
+        
+        f.write("\n")
+        
+        # Chain Escalation Analysis
+        f.write("PRIVILEGE ESCALATION CHAIN ANALYSIS\n")
+        f.write("-" * 40 + "\n")
+        
+        # Get all escalation findings
+        escalation_findings = [f for f in summary.get('all_findings', []) if f.get('Pattern') == 'privilege_escalation']
+        
+        if escalation_findings:
+            f.write(f"Found {len(escalation_findings)} privilege escalation paths:\n\n")
+            
+            # Group by severity
+            critical_chains = [f for f in escalation_findings if f.get('Severity') == 'CRITICAL']
+            high_chains = [f for f in escalation_findings if f.get('Severity') == 'HIGH']
+            
+            if critical_chains:
+                f.write(f"CRITICAL ESCALATION CHAINS ({len(critical_chains)}):\n")
+                for i, finding in enumerate(critical_chains[:10], 1):
+                    path = finding.get('Path') or finding.get('Chain') or 'Unknown path'
+                    target = finding.get('Target Privileged Role') or finding.get('TargetPrivilegedRole') or 'Admin role'
+                    f.write(f"{i}. {path} -> {target}\n")
+                    f.write(f"   Action: {finding.get('ActionableResponse', 'Review escalation path')}\n\n")
+            
+            if high_chains:
+                f.write(f"HIGH RISK ESCALATION CHAINS ({len(high_chains)}):\n")
+                for i, finding in enumerate(high_chains[:5], 1):
+                    path = finding.get('Path') or finding.get('Chain') or 'Unknown path'
+                    target = finding.get('Target Privileged Role') or finding.get('TargetPrivilegedRole') or 'Privileged role'
+                    f.write(f"{i}. {path} -> {target}\n")
+                    f.write(f"   Action: {finding.get('ActionableResponse', 'Review escalation path')}\n\n")
+            
+            # Chain statistics
+            f.write("ESCALATION CHAIN STATISTICS:\n")
+            
+            # Count chain lengths
+            chain_lengths = {}
+            for finding in escalation_findings:
+                path = finding.get('Path') or finding.get('Chain') or ''
+                if path:
+                    length = len(path.split(' -> ')) if ' -> ' in path else len(path.split('->')) if '->' in path else 1
+                    chain_lengths[length] = chain_lengths.get(length, 0) + 1
+            
+            if chain_lengths:
+                f.write("Chain lengths:\n")
+                for length, count in sorted(chain_lengths.items()):
+                    f.write(f"  {length} steps: {count} chains\n")
+            
+            # Most common starting roles
+            starting_roles = {}
+            for finding in escalation_findings:
+                path = finding.get('Path') or finding.get('Chain') or ''
+                if path:
+                    start_role = path.split(' -> ')[0] if ' -> ' in path else path.split('->')[0] if '->' in path else path
+                    starting_roles[start_role] = starting_roles.get(start_role, 0) + 1
+            
+            if starting_roles:
+                f.write("\nMost common starting roles:\n")
+                sorted_roles = sorted(starting_roles.items(), key=lambda x: x[1], reverse=True)[:5]
+                for role, count in sorted_roles:
+                    f.write(f"  {role}: {count} chains\n")
+            
+        else:
+            f.write("No privilege escalation chains detected.\n")
         
         f.write("\n")
         
