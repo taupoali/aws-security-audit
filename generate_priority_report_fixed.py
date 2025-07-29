@@ -512,8 +512,17 @@ def process_all_findings(csv_files):
             severity_info = analyze_finding_severity(row, filename)
             key_info = extract_key_info(row, csv_file)
             
-            # Get service dependency
-            service_dependency = get_service_dependency(severity_info["pattern"], row, key_info.get("RoleName", ""))
+            # Get service dependency - try multiple role name fields
+            role_for_dependency = (
+                key_info.get("RoleName") or 
+                key_info.get("Role Name") or 
+                key_info.get("EntityName") or 
+                row.get("RoleName") or 
+                row.get("Role Name") or 
+                row.get("EntityName") or 
+                ""
+            )
+            service_dependency = get_service_dependency(severity_info["pattern"], row, role_for_dependency)
             
             finding = {
                 "Severity": severity_info["severity"],
