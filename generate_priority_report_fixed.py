@@ -46,30 +46,90 @@ def load_csv_data(file_path):
         print(f"Error loading {file_path}: {e}")
         return []
 
-# AWS service role patterns that should not be modified
+# AWS service role patterns with detailed service information
 AWS_SERVICE_ROLES = {
-    "control_tower": [
-        "AWSControlTowerExecution", "AWSControlTowerStackSetRole", "AWSControlTowerCloudTrailRole",
-        "AWSControlTowerConfigAggregatorRoleForOrganizations", "aws-controltower-", "ControlTowerExecution",
-        "AWSControlTowerBP-", "StackSet-AWSControlTower", "AWSControlTowerAdmin"
-    ],
-    "identity_center": [
-        "AWSReservedSSO_", "aws-reserved-sso", "AWSServiceRoleForSSO", "AWSServiceRoleForIdentityStore",
-        "AWSSSORoleForIdentityCenter", "PermissionSet", "AccountAssignment"
-    ],
-    "organizations": [
-        "OrganizationAccountAccessRole", "AWSServiceRoleForOrganizations", "OrganizationFormationRole",
-        "AWSOrganizationsServiceRole"
-    ],
-    "config": [
-        "AWSServiceRoleForConfig", "aws-config-role", "ConfigRole", "AWSConfigRole"
-    ],
-    "cloudtrail": [
-        "CloudTrail_CloudWatchLogsRole", "AWSServiceRoleForCloudTrail", "CloudTrailRole"
-    ],
-    "account_factory": [
-        "AWSControlTowerAccountFactory", "AccountFactory", "ServiceCatalogEndUser", "AWSServiceCatalogEndUser"
-    ]
+    "control_tower": {
+        "patterns": [
+            "AWSControlTowerExecution", "AWSControlTowerStackSetRole", "AWSControlTowerCloudTrailRole",
+            "AWSControlTowerConfigAggregatorRoleForOrganizations", "aws-controltower-", "ControlTowerExecution",
+            "AWSControlTowerBP-", "StackSet-AWSControlTower", "AWSControlTowerAdmin", "AWSAFTExecution"
+        ],
+        "description": "AWS Control Tower service for centralized multi-account governance",
+        "function": "Manages account provisioning, guardrails, and organizational compliance"
+    },
+    "identity_center": {
+        "patterns": [
+            "AWSReservedSSO_", "aws-reserved-sso", "AWSServiceRoleForSSO", "AWSServiceRoleForIdentityStore",
+            "AWSSSORoleForIdentityCenter", "PermissionSet", "AccountAssignment"
+        ],
+        "description": "AWS IAM Identity Center (SSO) for centralized access management",
+        "function": "Provides single sign-on and centralized permission management across AWS accounts"
+    },
+    "organizations": {
+        "patterns": [
+            "OrganizationAccountAccessRole", "AWSServiceRoleForOrganizations", "OrganizationFormationRole",
+            "AWSOrganizationsServiceRole"
+        ],
+        "description": "AWS Organizations service for account management",
+        "function": "Manages organizational units, accounts, and service control policies"
+    },
+    "config": {
+        "patterns": [
+            "AWSServiceRoleForConfig", "aws-config-role", "ConfigRole", "AWSConfigRole"
+        ],
+        "description": "AWS Config service for configuration compliance monitoring",
+        "function": "Tracks resource configurations and evaluates compliance rules"
+    },
+    "cloudtrail": {
+        "patterns": [
+            "CloudTrail_CloudWatchLogsRole", "AWSServiceRoleForCloudTrail", "CloudTrailRole"
+        ],
+        "description": "AWS CloudTrail service for API logging and auditing",
+        "function": "Records AWS API calls and delivers log files for security analysis"
+    },
+    "account_factory": {
+        "patterns": [
+            "AWSControlTowerAccountFactory", "AccountFactory", "ServiceCatalogEndUser", "AWSServiceCatalogEndUser",
+            "AWSAFTExecution"
+        ],
+        "description": "AWS Control Tower Account Factory for automated account provisioning",
+        "function": "Automates AWS account creation and baseline configuration deployment"
+    },
+    "firewall_manager": {
+        "patterns": [
+            "AWSServiceRoleForFMS", "FMSServiceRole", "FirewallManager"
+        ],
+        "description": "AWS Firewall Manager service for centralized firewall management",
+        "function": "Manages WAF rules, security groups, and firewall policies across accounts"
+    },
+    "cloudformation_stacksets": {
+        "patterns": [
+            "AWSServiceRoleForCloudFormationStackSetsOrgMember", "StackSetsOrgMember", "CloudFormationStackSets"
+        ],
+        "description": "AWS CloudFormation StackSets for organization-wide deployments",
+        "function": "Deploys CloudFormation stacks across multiple accounts and regions in organization"
+    },
+    "guardduty": {
+        "patterns": [
+            "AWSServiceRoleForAmazonGuardDuty", "GuardDutyServiceRole"
+        ],
+        "description": "Amazon GuardDuty threat detection service",
+        "function": "Monitors for malicious activity and unauthorized behavior across AWS accounts"
+    },
+    "security_hub": {
+        "patterns": [
+            "AWSServiceRoleForSecurityHub", "SecurityHubServiceRole"
+        ],
+        "description": "AWS Security Hub for centralized security findings management",
+        "function": "Aggregates security findings from multiple AWS security services"
+    },
+    "systems_manager": {
+        "patterns": [
+            "AWSServiceRoleForAmazonSSM", "SSMServiceRole", "SystemsManagerServiceRole"
+        ],
+        "description": "AWS Systems Manager for operational management",
+        "function": "Manages EC2 instances, patches, and operational tasks across infrastructure"
+    }
 }
 
 # Expected configurations for AWS services (what should be considered normal)
@@ -94,14 +154,18 @@ EXPECTED_SERVICE_CONFIGS = {
 def is_aws_service_role(role_name):
     """Check if a role is an AWS service role that should not be modified"""
     if not role_name:
-        return False
+        return None
     
     role_name_lower = role_name.lower()
     
-    for service, patterns in AWS_SERVICE_ROLES.items():
-        for pattern in patterns:
+    for service, service_info in AWS_SERVICE_ROLES.items():
+        for pattern in service_info["patterns"]:
             if pattern.lower() in role_name_lower:
-                return service
+                return {
+                    "service": service,
+                    "description": service_info["description"],
+                    "function": service_info["function"]
+                }
     return None
 
 def is_expected_service_behavior(row, pattern, role_name):
@@ -109,10 +173,11 @@ def is_expected_service_behavior(row, pattern, role_name):
     if not role_name:
         return None
     
-    service_type = is_aws_service_role(role_name)
-    if not service_type:
+    service_info = is_aws_service_role(role_name)
+    if not service_info:
         return None
     
+    service_type = service_info["service"]
     row_str = str(row).lower()
     principal = str(row.get("Principal", "")).lower()
     
@@ -138,35 +203,36 @@ def is_expected_service_behavior(row, pattern, role_name):
     return None
 
 def get_service_dependency(pattern, row, role_name):
-    """Determine service dependency for a finding"""
+    """Determine service dependency for a finding with detailed context"""
     # Check if this represents expected AWS service behavior
     expected_behavior = is_expected_service_behavior(row, pattern, role_name)
     if expected_behavior:
         if expected_behavior == "control_tower_cross_account":
-            return "Control Tower function required - verify before changes"
+            return "Control Tower governance - required for multi-account management"
         elif expected_behavior == "identity_center_wildcards":
-            return "Identity Center function required - verify before changes"
+            return "Identity Center SSO - required for centralized access management"
         elif expected_behavior == "account_factory_permissions":
-            return "Account Factory function required - verify before changes"
+            return "Account Factory automation - required for account provisioning"
     
-    # Check if this is an AWS service role (fallback)
-    service_type = is_aws_service_role(role_name)
-    if service_type:
-        service_name = service_type.replace('_', ' ').title()
-        return f"{service_name} service dependency - verify requirement"
+    # Check if this is an AWS service role with detailed context
+    service_info = is_aws_service_role(role_name)
+    if service_info:
+        service_name = service_info["description"]
+        function = service_info["function"]
+        return f"{service_name} - {function}"
     
     # Check for specific service dependencies based on content
     row_str = str(row).lower()
     if "passrole" in row_str:
         if "admin" in row_str or "*" in row_str:
-            return "High privilege PassRole - review service necessity"
+            return "High privilege PassRole - review service necessity and scope"
         else:
-            return "PassRole permission - verify service requirement"
+            return "PassRole permission - verify service requirement and least privilege"
     
     if "assumerole" in row_str and "cross" in row_str:
-        return "Cross-account access - verify business requirement"
+        return "Cross-account access - verify business requirement and add conditions"
     
-    return "No service dependency identified"
+    return "No service dependency identified - standard security review required"
 
 def generate_actionable_response(pattern, row, filename):
     """Generate specific actionable response based on CSV data"""
@@ -186,9 +252,9 @@ def generate_actionable_response(pattern, row, filename):
         return f"EXPECTED BEHAVIOR: '{role_name}' - {description}. This configuration is required and should not be modified."
     
     # Check if this is an AWS service role (fallback)
-    service_type = is_aws_service_role(role_name)
-    if service_type:
-        return f"AWS SERVICE ROLE: '{role_name}' is an AWS {service_type.replace('_', ' ').title()} service role. Verify this configuration is required before making changes."
+    service_info = is_aws_service_role(role_name)
+    if service_info:
+        return f"AWS SERVICE ROLE: '{role_name}' is used by {service_info['description']}. {service_info['function']}. Verify this configuration is required before making changes."
     
     if pattern == "privilege_escalation":
         if path and target_role:
@@ -226,9 +292,9 @@ def generate_actionable_response(pattern, row, filename):
     
     elif pattern == "public_admin_access":
         # Check if this is an AWS service role first
-        service_type = is_aws_service_role(role_name)
-        if service_type:
-            return f"INFORMATIONAL: '{role_name}' is an AWS {service_type.replace('_', ' ').title()} service role. Wildcard permissions are required for service functionality. No action needed."
+        service_info = is_aws_service_role(role_name)
+        if service_info:
+            return f"INFORMATIONAL: '{role_name}' is used by {service_info['description']}. Wildcard permissions are required for service functionality. No action needed."
         
         if "s3" in filename_lower and resource:
             return f"Remove public-read/public-write ACL from S3 bucket '{resource}' and set bucket policy to deny public access"
@@ -270,9 +336,9 @@ def generate_actionable_response(pattern, row, filename):
     
     elif pattern == "external_access":
         # Check if this is an AWS service role first
-        service_type = is_aws_service_role(role_name)
-        if service_type:
-            return f"INFORMATIONAL: '{role_name}' is an AWS {service_type.replace('_', ' ').title()} service role. Cross-account access is required for service functionality. No action needed."
+        service_info = is_aws_service_role(role_name)
+        if service_info:
+            return f"INFORMATIONAL: '{role_name}' is used by {service_info['description']}. Cross-account access is required for service functionality. No action needed."
         
         if principal and role_name:
             if "root" in principal:
@@ -344,7 +410,7 @@ def analyze_finding_severity(row, filename):
     role_name = row.get("RoleName") or row.get("Role Name") or row.get("EntityName") or "Unknown"
     
     # Check if this is an AWS service role - reduce severity if it is
-    service_type = is_aws_service_role(role_name)
+    service_info = is_aws_service_role(role_name)
     
     # Check for critical patterns
     for pattern_name, pattern_info in CRITICAL_PATTERNS.items():
@@ -354,7 +420,7 @@ def analyze_finding_severity(row, filename):
             
             # Reduce severity for AWS service roles
             severity = pattern_info["severity"]
-            if service_type:
+            if service_info:
                 if severity == "CRITICAL":
                     severity = "LOW"  # Service roles with expected permissions
                 elif severity == "HIGH":
@@ -362,7 +428,7 @@ def analyze_finding_severity(row, filename):
             
             return {
                 "severity": severity,
-                "reason": pattern_info["description"] + (f" (AWS {service_type.replace('_', ' ').title()} Service Role)" if service_type else ""),
+                "reason": pattern_info["description"] + (f" ({service_info['description']})" if service_info else ""),
                 "pattern": pattern_name,
                 "problem_summary": problem_summary,
                 "actionable_response": actionable_response
