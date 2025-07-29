@@ -105,7 +105,28 @@ def generate_actionable_response(pattern, row, filename):
         elif target_role:
             return f"Remove AssumeRole permission allowing '{role_name}' to assume '{target_role}'"
         else:
-            return f"Review and remove excessive IAM permissions from '{role_name}' that allow privilege escalation"
+            # Try to extract specific permissions that are excessive
+            excessive_perms = []
+            row_str = str(row).lower()
+            
+            # Look for admin-level permissions in the data
+            admin_indicators = ['*', 'admin', 'full', 'all', 'iam:', 'organizations:', 's3:*', 'ec2:*']
+            for indicator in admin_indicators:
+                if indicator in row_str:
+                    excessive_perms.append(indicator)
+            
+            # Check specific fields that might contain permissions
+            for field in ['Actions', 'Action', 'Permissions', 'PolicyDocument', 'Statement']:
+                if field in row and row[field]:
+                    field_value = str(row[field])
+                    if any(admin in field_value for admin in ['*', 'Admin', 'Full']):
+                        excessive_perms.append(f"Field '{field}': {field_value[:100]}..." if len(field_value) > 100 else f"Field '{field}': {field_value}")
+            
+            if excessive_perms:
+                perm_summary = ", ".join(excessive_perms[:3])  # Limit to first 3 items
+                return f"Review and remove excessive IAM permissions from '{role_name}' that allow privilege escalation. Flagged permissions: {perm_summary}"
+            else:
+                return f"Review and remove excessive IAM permissions from '{role_name}' that allow privilege escalation"
     
     elif pattern == "public_admin_access":
         # Check if this is an AWS service role first
@@ -116,7 +137,20 @@ def generate_actionable_response(pattern, row, filename):
         if "s3" in filename_lower and resource:
             return f"Remove public-read/public-write ACL from S3 bucket '{resource}' and set bucket policy to deny public access"
         elif "iam" in filename_lower and role_name:
-            return f"Remove wildcard (*) principals from trust policy of IAM role '{role_name}'"
+            # Try to show what specific wildcard access was found
+            wildcard_details = []
+            row_str = str(row)
+            if "*" in row_str:
+                # Extract context around wildcards
+                for field in ['Principal', 'Action', 'Resource', 'Statement']:
+                    if field in row and row[field] and "*" in str(row[field]):
+                        wildcard_details.append(f"{field}: {str(row[field])[:50]}..." if len(str(row[field])) > 50 else f"{field}: {row[field]}")
+            
+            if wildcard_details:
+                details = ", ".join(wildcard_details[:2])  # Limit to first 2 items
+                return f"Remove wildcard (*) principals from trust policy of IAM role '{role_name}'. Found: {details}"
+            else:
+                return f"Remove wildcard (*) principals from trust policy of IAM role '{role_name}'"
         elif resource and "*" in str(row).lower():
             return f"Replace wildcard (*) permissions with specific principals/IPs for resource '{resource}'"
         else:
@@ -306,11 +340,17 @@ def create_priority_summary(findings):
     severity_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
     findings.sort(key=lambda x: severity_order.get(x["Severity"], 4))
     
+    # Separate trusted advisor findings
+    trusted_advisor_findings = [f for f in findings if "trusted_advisor" in f.get("SourceFile", "").lower()]
+    non_trusted_advisor_findings = [f for f in findings if "trusted_advisor" not in f.get("SourceFile", "").lower()]
+    
     # Group by severity and pattern
     summary = {
         "critical_count": len([f for f in findings if f["Severity"] == "CRITICAL"]),
         "high_count": len([f for f in findings if f["Severity"] == "HIGH"]),
         "total_count": len(findings),
+        "trusted_advisor_count": len(trusted_advisor_findings),
+        "non_trusted_advisor_count": len(non_trusted_advisor_findings),
         "by_pattern": defaultdict(list),
         "by_source": defaultdict(int),
         "top_critical": []
@@ -345,6 +385,8 @@ def generate_readable_report(summary, output_file):
         f.write("EXECUTIVE SUMMARY\n")
         f.write("-" * 20 + "\n")
         f.write(f"Total Findings: {summary['total_count']}\n")
+        f.write(f"Security Findings (excluding Trusted Advisor): {summary['non_trusted_advisor_count']}\n")
+        f.write(f"Trusted Advisor Findings: {summary['trusted_advisor_count']}\n")
         f.write(f"Critical Findings: {summary['critical_count']}\n")
         f.write(f"High Priority Findings: {summary['high_count']}\n\n")
         
@@ -398,12 +440,26 @@ def generate_readable_report(summary, output_file):
                 f.write(f" ({high_count} HIGH)")
             f.write("\n")
             
-            # Show top 10 critical findings for this category
+            # Show top 10 critical findings for this category with full details
             critical_findings = [f for f in pattern_findings if f["Severity"] == "CRITICAL"]
             if critical_findings:
                 f.write(f"   Top Critical Issues in {pattern_name}:\n")
                 for i, finding in enumerate(critical_findings[:10], 1):
                     f.write(f"   {i}. {finding.get('ProblemSummary', 'Unknown issue')}\n")
+                    
+                    # Show key details
+                    key_details = []
+                    for key in ["RoleName", "Resource", "Title", "Path", "Principal"]:
+                        if key in finding and finding[key]:
+                            key_details.append(f"{key}: {finding[key]}")
+                    
+                    if key_details:
+                        f.write(f"      Details: {' | '.join(key_details[:3])}\n")
+                    
+                    f.write(f"      Source: {finding.get('SourceFile', 'unknown')}\n")
+                    f.write(f"      Impact: {finding['Reason']}\n")
+                    f.write(f"      Action: {finding.get('ActionableResponse', 'Review and remediate')}\n\n")
+            else:
                 f.write("\n")
         
         f.write("\n")
