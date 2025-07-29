@@ -265,9 +265,9 @@ def create_priority_summary(findings):
         source = finding.get("SourceFile", "unknown")
         summary["by_source"][source] += 1
     
-    # Get top 10 critical findings
+    # Get top 20 critical findings
     critical_findings = [f for f in findings if f["Severity"] == "CRITICAL"]
-    summary["top_critical"] = critical_findings[:10]
+    summary["top_critical"] = critical_findings[:20]
     summary["all_findings"] = findings
     
     return summary
@@ -292,7 +292,7 @@ def generate_readable_report(summary, output_file):
         
         # Top Critical Findings
         if summary['top_critical']:
-            f.write("TOP 10 CRITICAL FINDINGS (IMMEDIATE ATTENTION)\n")
+            f.write("TOP 20 CRITICAL FINDINGS (IMMEDIATE ATTENTION)\n")
             f.write("-" * 50 + "\n")
             for i, finding in enumerate(summary['top_critical'], 1):
                 f.write(f"{i}. {finding.get('ProblemSummary', finding['Reason'])}\n")
@@ -336,6 +336,14 @@ def generate_readable_report(summary, output_file):
             if high_count > 0:
                 f.write(f" ({high_count} HIGH)")
             f.write("\n")
+            
+            # Show top 10 critical findings for this category
+            critical_findings = [f for f in pattern_findings if f["Severity"] == "CRITICAL"]
+            if critical_findings:
+                f.write(f"   Top Critical Issues in {pattern_name}:\n")
+                for i, finding in enumerate(critical_findings[:10], 1):
+                    f.write(f"   {i}. {finding.get('ProblemSummary', 'Unknown issue')}\n")
+                f.write("\n")
         
         f.write("\n")
         
@@ -373,20 +381,20 @@ def generate_readable_report(summary, output_file):
         
         if summary['critical_count'] > 0:
             f.write("PHASE 1 - IMMEDIATE (0-7 days):\n")
-            f.write(f"• Address all {summary['critical_count']} CRITICAL findings\n")
-            f.write("• Focus on privilege escalation and public admin access\n")
-            f.write("• Implement emergency access controls if needed\n\n")
+            f.write(f"- Address all {summary['critical_count']} CRITICAL findings\n")
+            f.write("- Focus on privilege escalation and public admin access\n")
+            f.write("- Implement emergency access controls if needed\n\n")
         
         if summary['high_count'] > 0:
             f.write("PHASE 2 - SHORT TERM (1-4 weeks):\n")
-            f.write(f"• Remediate {summary['high_count']} HIGH priority findings\n")
-            f.write("• Review and strengthen access controls\n")
-            f.write("• Implement additional monitoring\n\n")
+            f.write(f"- Remediate {summary['high_count']} HIGH priority findings\n")
+            f.write("- Review and strengthen access controls\n")
+            f.write("- Implement additional monitoring\n\n")
         
         f.write("PHASE 3 - ONGOING:\n")
-        f.write("• Regular security audits using these tools\n")
-        f.write("• Continuous monitoring implementation\n")
-        f.write("• Security awareness training\n\n")
+        f.write("- Regular security audits using these tools\n")
+        f.write("- Continuous monitoring implementation\n")
+        f.write("- Security awareness training\n\n")
         
         f.write("=" * 60 + "\n")
         f.write("END OF PRIORITY REPORT\n")
