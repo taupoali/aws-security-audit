@@ -30,6 +30,22 @@ AWS_SERVICE_ROLES = {
     "security_hub": {
         "patterns": ["AWSServiceRoleForSecurityHub", "SecurityHubServiceRole"],
         "description": "AWS Security Hub for centralized security findings management"
+    },
+    "support": {
+        "patterns": ["AWSServiceRoleForSupport"],
+        "description": "AWS Support service role for support case management and trusted advisor"
+    },
+    "organizations": {
+        "patterns": ["AWSServiceRoleForOrganizations"],
+        "description": "AWS Organizations service role for organizational account management"
+    },
+    "config": {
+        "patterns": ["AWSServiceRoleForConfigMultiAccountSetup", "AWSServiceRoleForConfig"],
+        "description": "AWS Config service role for configuration compliance monitoring"
+    },
+    "systems_manager": {
+        "patterns": ["AWS-SystemsManager-AutomationExecution", "AWSServiceRoleForAmazonSSM"],
+        "description": "AWS Systems Manager service role for automation and operational management"
     }
 }
 
