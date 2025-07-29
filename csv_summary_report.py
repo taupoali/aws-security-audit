@@ -158,8 +158,13 @@ def generate_html_report(csv_summaries, output_file):
         body {{ font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }}
         .container {{ max-width: 1200px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
         .header {{ text-align: center; color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 20px; margin-bottom: 30px; }}
-        .csv-section {{ margin-bottom: 40px; border: 1px solid #ddd; border-radius: 8px; padding: 20px; }}
-        .csv-title {{ background-color: #3498db; color: white; padding: 10px; margin: -20px -20px 20px -20px; border-radius: 8px 8px 0 0; }}
+        .csv-section {{ margin-bottom: 40px; border: 1px solid #ddd; border-radius: 8px; }}
+        .csv-title {{ background-color: #3498db; color: white; padding: 15px; margin: 0; border-radius: 8px 8px 0 0; cursor: pointer; user-select: none; }}
+        .csv-title:hover {{ background-color: #2980b9; }}
+        .csv-content {{ padding: 20px; display: none; }}
+        .csv-content.expanded {{ display: block; }}
+        .toggle-icon {{ float: right; transition: transform 0.3s; }}
+        .toggle-icon.expanded {{ transform: rotate(180deg); }}
         .finding {{ background-color: #f8f9fa; border-left: 4px solid #007bff; padding: 15px; margin: 10px 0; border-radius: 4px; }}
         .service-role {{ border-left-color: #28a745; }}
         .stats {{ display: flex; justify-content: space-around; margin: 20px 0; }}
@@ -192,9 +197,10 @@ def generate_html_report(csv_summaries, output_file):
             
         html_content += f"""
         <div class="csv-section">
-            <div class="csv-title">
-                <h2>{summary['filename']} ({summary['count']} findings)</h2>
+            <div class="csv-title" onclick="toggleSection('{summary['filename'].replace('.', '_')}')">
+                <h2>{summary['filename']} ({summary['count']} findings) <span class="toggle-icon" id="icon_{summary['filename'].replace('.', '_')}">▼</span></h2>
             </div>
+            <div class="csv-content" id="content_{summary['filename'].replace('.', '_')}">
 """
         
         for i, finding in enumerate(summary['findings'], 1):
@@ -208,10 +214,25 @@ def generate_html_report(csv_summaries, output_file):
             </div>
 """
         
-        html_content += "</div>"
+        html_content += "</div></div>"
 
     html_content += """
     </div>
+    
+    <script>
+    function toggleSection(sectionId) {
+        const content = document.getElementById('content_' + sectionId);
+        const icon = document.getElementById('icon_' + sectionId);
+        
+        if (content.classList.contains('expanded')) {
+            content.classList.remove('expanded');
+            icon.classList.remove('expanded');
+        } else {
+            content.classList.add('expanded');
+            icon.classList.add('expanded');
+        }
+    }
+    </script>
 </body>
 </html>
 """
