@@ -523,7 +523,12 @@ def process_all_findings(csv_files):
                 ""
             )
             
-            service_dependency = get_service_dependency(severity_info["pattern"], row, role_for_dependency)
+            # Direct service role check - bypass get_service_dependency function
+            service_info = is_aws_service_role(role_for_dependency)
+            if service_info:
+                service_dependency = f"{service_info['description']} - {service_info['function']}"
+            else:
+                service_dependency = "No service dependency identified - standard security review required"
             
             finding = {
                 "Severity": severity_info["severity"],
