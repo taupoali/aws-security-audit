@@ -654,6 +654,7 @@ def generate_readable_report(summary, output_file, max_items=20):
                     
                     f.write(f"      Source: {finding.get('SourceFile', 'unknown')}\n")
                     f.write(f"      Impact: {finding['Reason']}\n")
+                    f.write(f"      Service Dependency: {finding.get('ServiceDependency', 'None identified')}\n")
                     f.write(f"      Action: {finding.get('ActionableResponse', 'Review and remediate')}\n\n")
             else:
                 f.write("\n")
@@ -680,6 +681,7 @@ def generate_readable_report(summary, output_file, max_items=20):
                     f.write(f"   Details: {' | '.join(key_details[:3])}\n")
                 
                 f.write(f"   Impact: {finding['Reason']}\n")
+                f.write(f"   Service Dependency: {finding.get('ServiceDependency', 'None identified')}\n")
                 f.write(f"   Action: {finding.get('ActionableResponse', 'Review and remediate')}\n\n")
         
         f.write("\n")
@@ -704,6 +706,7 @@ def generate_readable_report(summary, output_file, max_items=20):
                     path = finding.get('Path') or finding.get('Chain') or 'Unknown path'
                     target = finding.get('Target Privileged Role') or finding.get('TargetPrivilegedRole') or 'Admin role'
                     f.write(f"{i}. {path} -> {target}\n")
+                    f.write(f"   Service Dependency: {finding.get('ServiceDependency', 'None identified')}\n")
                     f.write(f"   Action: {finding.get('ActionableResponse', 'Review escalation path')}\n\n")
             
             if high_chains:
@@ -712,6 +715,7 @@ def generate_readable_report(summary, output_file, max_items=20):
                     path = finding.get('Path') or finding.get('Chain') or 'Unknown path'
                     target = finding.get('Target Privileged Role') or finding.get('TargetPrivilegedRole') or 'Privileged role'
                     f.write(f"{i}. {path} -> {target}\n")
+                    f.write(f"   Service Dependency: {finding.get('ServiceDependency', 'None identified')}\n")
                     f.write(f"   Action: {finding.get('ActionableResponse', 'Review escalation path')}\n\n")
             
             # Chain statistics
