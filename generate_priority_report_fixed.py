@@ -591,6 +591,10 @@ def create_priority_summary(findings):
     
     # Get top critical findings
     critical_findings = [f for f in findings if f["Severity"] == "CRITICAL"]
+    # Debug: Check what's being put in summary
+    for finding in critical_findings[:3]:
+        if "aft-" in str(finding.get('RoleName', '')).lower():
+            print(f"[DEBUG] Critical finding ServiceDependency before summary: '{finding.get('ServiceDependency', 'MISSING')}'")
     summary["top_critical"] = critical_findings
     summary["all_findings"] = findings
     
@@ -620,6 +624,10 @@ def generate_readable_report(summary, output_file, max_items=20):
         if summary['top_critical']:
             f.write(f"TOP {min(len(summary['top_critical']), max_items)} CRITICAL FINDINGS (IMMEDIATE ATTENTION)\n")
             f.write("-" * 50 + "\n")
+            # Debug: Check what's in the summary
+            for finding in summary['top_critical'][:3]:
+                if "aft-" in str(finding.get('RoleName', '')).lower():
+                    print(f"[DEBUG] Summary finding ServiceDependency: '{finding.get('ServiceDependency', 'MISSING')}'")
             for i, finding in enumerate(summary['top_critical'][:max_items], 1):
                 f.write(f"{i}. {finding.get('ProblemSummary', finding['Reason'])}\n")
                 
