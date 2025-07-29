@@ -522,7 +522,18 @@ def process_all_findings(csv_files):
                 row.get("EntityName") or 
                 ""
             )
-            service_dependency = get_service_dependency(severity_info["pattern"], row, role_for_dependency)
+            
+            # Debug: Test direct service role check
+            if "aft-" in str(role_for_dependency).lower():
+                direct_check = is_aws_service_role(role_for_dependency)
+                print(f"[DEBUG] Direct check for '{role_for_dependency}': {direct_check}")
+                if direct_check:
+                    service_dependency = f"{direct_check['description']} - {direct_check['function']}"
+                    print(f"[DEBUG] Setting service_dependency to: {service_dependency}")
+                else:
+                    service_dependency = get_service_dependency(severity_info["pattern"], row, role_for_dependency)
+            else:
+                service_dependency = get_service_dependency(severity_info["pattern"], row, role_for_dependency)
             
             finding = {
                 "Severity": severity_info["severity"],
