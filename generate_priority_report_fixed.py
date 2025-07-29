@@ -535,6 +535,10 @@ def process_all_findings(csv_files):
             else:
                 service_dependency = get_service_dependency(severity_info["pattern"], row, role_for_dependency)
             
+            # Debug: Check what's being stored
+            if "aft-" in str(role_for_dependency).lower():
+                print(f"[DEBUG] Storing ServiceDependency: '{service_dependency}' for role: '{role_for_dependency}'")
+            
             finding = {
                 "Severity": severity_info["severity"],
                 "Reason": severity_info["reason"],
@@ -544,6 +548,10 @@ def process_all_findings(csv_files):
                 "ServiceDependency": service_dependency,
                 **key_info
             }
+            
+            # Debug: Verify what's in the finding
+            if "aft-" in str(role_for_dependency).lower():
+                print(f"[DEBUG] Finding ServiceDependency field: '{finding.get('ServiceDependency', 'MISSING')}'")
             
             all_findings.append(finding)
     
@@ -626,7 +634,11 @@ def generate_readable_report(summary, output_file, max_items=20):
                 
                 f.write(f"   Source: {finding.get('SourceFile', 'unknown')}\n")
                 f.write(f"   Impact: {finding['Reason']}\n")
-                f.write(f"   Service Dependency: {finding.get('ServiceDependency', 'None identified')}\n")
+                # Debug: Check what we're trying to display
+                dep_value = finding.get('ServiceDependency', 'None identified')
+                if "aft-" in str(finding.get('RoleName', '')).lower():
+                    print(f"[DEBUG] Displaying ServiceDependency: '{dep_value}' for role: '{finding.get('RoleName', 'Unknown')}'")
+                f.write(f"   Service Dependency: {dep_value}\n")
                 f.write(f"   Action: {finding.get('ActionableResponse', 'Review and remediate')}\n\n")
         
         # Findings by Category
