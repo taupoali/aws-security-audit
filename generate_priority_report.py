@@ -46,6 +46,52 @@ def load_csv_data(file_path):
         print(f"Error loading {file_path}: {e}")
         return []
 
+def generate_problem_summary(row, filename, pattern):
+    """Generate a simplified problem summary based on the finding"""
+    filename_lower = filename.lower()
+    
+    # Extract key information for summary
+    role_name = row.get("RoleName") or row.get("Role Name") or row.get("EntityName") or "Unknown"
+    resource = row.get("Resource") or row.get("ResourceId") or row.get("Resource ID") or ""
+    path = row.get("Path") or row.get("Chain") or ""
+    title = row.get("Title") or row.get("Finding") or ""
+    
+    # Generate context-specific summaries
+    if pattern == "privilege_escalation":
+        if path:
+            return f"Role '{role_name}' can escalate privileges via: {path}"
+        else:
+            return f"Role '{role_name}' has privilege escalation capability"
+    
+    elif pattern == "public_admin_access":
+        if "s3" in filename_lower:
+            return f"S3 bucket '{resource}' allows public administrative access"
+        elif "iam" in filename_lower:
+            return f"IAM role '{role_name}' grants public administrative permissions"
+        else:
+            return f"Resource '{resource or role_name}' has public administrative access"
+    
+    elif pattern == "failed_compliance":
+        if "security" in filename_lower:
+            return f"Security Hub compliance failure: {title or resource or role_name}"
+        elif "config" in filename_lower:
+            return f"AWS Config rule violation: {title or resource or role_name}"
+        else:
+            return f"Compliance check failed for: {resource or role_name or title}"
+    
+    elif pattern == "external_access":
+        principal = row.get("Principal") or row.get("ExternalPrincipal") or row.get("External Principals") or "external entity"
+        return f"Role '{role_name}' allows access from {principal}"
+    
+    else:
+        # General finding
+        if title:
+            return f"Security issue: {title}"
+        elif resource:
+            return f"Security concern with resource: {resource}"
+        else:
+            return f"Security finding in role: {role_name}"
+
 def analyze_finding_severity(row, filename):
     """Analyze a single finding for severity"""
     row_text = str(row).lower()
@@ -54,13 +100,21 @@ def analyze_finding_severity(row, filename):
     # Check for critical patterns
     for pattern_name, pattern_info in CRITICAL_PATTERNS.items():
         if any(keyword in row_text or keyword in filename_lower for keyword in pattern_info["keywords"]):
+            problem_summary = generate_problem_summary(row, filename, pattern_name)
             return {
                 "severity": pattern_info["severity"],
                 "reason": pattern_info["description"],
-                "pattern": pattern_name
+                "pattern": pattern_name,
+                "problem_summary": problem_summary
             }
     
-    return {"severity": "MEDIUM", "reason": "Standard security finding", "pattern": "general"}
+    problem_summary = generate_problem_summary(row, filename, "general")
+    return {
+        "severity": "MEDIUM", 
+        "reason": "Standard security finding", 
+        "pattern": "general",
+        "problem_summary": problem_summary
+    }
 
 def extract_key_info(row, filename):
     """Extract key information from a finding"""
@@ -105,6 +159,7 @@ def process_all_findings(csv_files):
                 "Severity": severity_info["severity"],
                 "Reason": severity_info["reason"],
                 "Pattern": severity_info["pattern"],
+                "ProblemSummary": severity_info["problem_summary"],
                 **key_info
             }
             
@@ -167,7 +222,7 @@ def generate_readable_report(summary, output_file):
             f.write("TOP 10 CRITICAL FINDINGS (IMMEDIATE ATTENTION)\n")
             f.write("-" * 50 + "\n")
             for i, finding in enumerate(summary['top_critical'], 1):
-                f.write(f"{i}. {finding['Reason']}\n")
+                f.write(f"{i}. {finding.get('ProblemSummary', finding['Reason'])}\n")
                 
                 # Show key details
                 key_details = []
@@ -178,7 +233,8 @@ def generate_readable_report(summary, output_file):
                 if key_details:
                     f.write(f"   Details: {' | '.join(key_details[:3])}\n")
                 
-                f.write(f"   Source: {finding.get('SourceFile', 'unknown')}\n\n")
+                f.write(f"   Source: {finding.get('SourceFile', 'unknown')}\n")
+                f.write(f"   Impact: {finding['Reason']}\n\n")
         
         # Findings by Category
         f.write("FINDINGS BY SECURITY CATEGORY\n")
