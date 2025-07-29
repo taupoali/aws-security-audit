@@ -137,6 +137,37 @@ def is_expected_service_behavior(row, pattern, role_name):
     
     return None
 
+def get_service_dependency(pattern, row, role_name):
+    """Determine service dependency for a finding"""
+    # Check if this represents expected AWS service behavior
+    expected_behavior = is_expected_service_behavior(row, pattern, role_name)
+    if expected_behavior:
+        if expected_behavior == "control_tower_cross_account":
+            return "Control Tower function required - verify before changes"
+        elif expected_behavior == "identity_center_wildcards":
+            return "Identity Center function required - verify before changes"
+        elif expected_behavior == "account_factory_permissions":
+            return "Account Factory function required - verify before changes"
+    
+    # Check if this is an AWS service role (fallback)
+    service_type = is_aws_service_role(role_name)
+    if service_type:
+        service_name = service_type.replace('_', ' ').title()
+        return f"{service_name} service dependency - verify requirement"
+    
+    # Check for specific service dependencies based on content
+    row_str = str(row).lower()
+    if "passrole" in row_str:
+        if "admin" in row_str or "*" in row_str:
+            return "High privilege PassRole - review service necessity"
+        else:
+            return "PassRole permission - verify service requirement"
+    
+    if "assumerole" in row_str and "cross" in row_str:
+        return "Cross-account access - verify business requirement"
+    
+    return "No service dependency identified"
+
 def generate_actionable_response(pattern, row, filename):
     """Generate specific actionable response based on CSV data"""
     filename_lower = filename.lower()
@@ -386,12 +417,16 @@ def process_all_findings(csv_files):
             severity_info = analyze_finding_severity(row, filename)
             key_info = extract_key_info(row, csv_file)
             
+            # Get service dependency
+            service_dependency = get_service_dependency(severity_info["pattern"], row, key_info.get("RoleName", ""))
+            
             finding = {
                 "Severity": severity_info["severity"],
                 "Reason": severity_info["reason"],
                 "Pattern": severity_info["pattern"],
                 "ProblemSummary": severity_info["problem_summary"],
                 "ActionableResponse": severity_info["actionable_response"],
+                "ServiceDependency": service_dependency,
                 **key_info
             }
             
@@ -476,6 +511,7 @@ def generate_readable_report(summary, output_file):
                 
                 f.write(f"   Source: {finding.get('SourceFile', 'unknown')}\n")
                 f.write(f"   Impact: {finding['Reason']}\n")
+                f.write(f"   Service Dependency: {finding.get('ServiceDependency', 'None identified')}\n")
                 f.write(f"   Action: {finding.get('ActionableResponse', 'Review and remediate')}\n\n")
         
         # Findings by Category
@@ -569,7 +605,7 @@ def generate_readable_report(summary, output_file):
             
             if critical_chains:
                 f.write(f"CRITICAL ESCALATION CHAINS ({len(critical_chains)}):\n")
-                for i, finding in enumerate(critical_chains[:10], 1):
+                for i, finding in enumerate(critical_chains[:max_items//2], 1):
                     path = finding.get('Path') or finding.get('Chain') or 'Unknown path'
                     target = finding.get('Target Privileged Role') or finding.get('TargetPrivilegedRole') or 'Admin role'
                     f.write(f"{i}. {path} -> {target}\n")
@@ -577,7 +613,7 @@ def generate_readable_report(summary, output_file):
             
             if high_chains:
                 f.write(f"HIGH RISK ESCALATION CHAINS ({len(high_chains)}):\n")
-                for i, finding in enumerate(high_chains[:5], 1):
+                for i, finding in enumerate(high_chains[:max_items//3], 1):
                     path = finding.get('Path') or finding.get('Chain') or 'Unknown path'
                     target = finding.get('Target Privileged Role') or finding.get('TargetPrivilegedRole') or 'Privileged role'
                     f.write(f"{i}. {path} -> {target}\n")
