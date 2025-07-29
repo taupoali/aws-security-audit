@@ -91,10 +91,7 @@ AWS_SERVICE_ROLES = {
     "account_factory": {
         "patterns": [
             "AWSControlTowerAccountFactory", "AccountFactory", "ServiceCatalogEndUser", "AWSServiceCatalogEndUser",
-            "AWSAFTExecution", "aft-account-provisioning-framework-lambda-", "aft-account-request-framework-",
-            "aft-customizations-framework-", "aft-account-provisioning-customizations-", "aft-invoke-aft-account-provisioning-framework-",
-            "aft-cleanup-resources-", "aft-feature-options-", "aft-global-customizations-", "aft-account-baseline-",
-            "aft-ssm-execution-role", "aft-states-", "aft-pipeline-", "aft-codebuild-", "aft-vpc-"
+            "AWSAFTExecution", "aft-", "AFT-"
         ],
         "description": "AWS Control Tower Account Factory for Terraform (AFT) - automated account provisioning framework",
         "function": "Orchestrates account creation, customizations, baseline configurations, and Terraform deployments across AWS accounts"
