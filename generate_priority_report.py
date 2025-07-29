@@ -46,6 +46,35 @@ def load_csv_data(file_path):
         print(f"Error loading {file_path}: {e}")
         return []
 
+def generate_actionable_response(pattern, row, filename):
+    """Generate actionable response for each finding type"""
+    filename_lower = filename.lower()
+    role_name = row.get("RoleName") or row.get("Role Name") or row.get("EntityName") or "Unknown"
+    resource = row.get("Resource") or row.get("ResourceId") or row.get("Resource ID") or ""
+    
+    if pattern == "privilege_escalation":
+        return f"Remove unnecessary role assumption permissions or add conditions to trust policies for '{role_name}'"
+    
+    elif pattern == "public_admin_access":
+        if "s3" in filename_lower:
+            return f"Remove public access from S3 bucket '{resource}' and implement least-privilege bucket policies"
+        else:
+            return f"Remove public access permissions and implement IP restrictions or MFA requirements"
+    
+    elif pattern == "failed_compliance":
+        if "security" in filename_lower:
+            return "Review and remediate the specific Security Hub finding according to AWS security best practices"
+        elif "config" in filename_lower:
+            return "Update resource configuration to comply with AWS Config rule requirements"
+        else:
+            return "Address compliance violation by implementing required security controls"
+    
+    elif pattern == "external_access":
+        return f"Review external access necessity for '{role_name}' and add conditions (MFA, IP, ExternalId) to trust policy"
+    
+    else:
+        return "Review finding details and implement appropriate security controls based on the specific issue"
+
 def generate_problem_summary(row, filename, pattern):
     """Generate a simplified problem summary based on the finding"""
     filename_lower = filename.lower()
@@ -101,19 +130,23 @@ def analyze_finding_severity(row, filename):
     for pattern_name, pattern_info in CRITICAL_PATTERNS.items():
         if any(keyword in row_text or keyword in filename_lower for keyword in pattern_info["keywords"]):
             problem_summary = generate_problem_summary(row, filename, pattern_name)
+            actionable_response = generate_actionable_response(pattern_name, row, filename)
             return {
                 "severity": pattern_info["severity"],
                 "reason": pattern_info["description"],
                 "pattern": pattern_name,
-                "problem_summary": problem_summary
+                "problem_summary": problem_summary,
+                "actionable_response": actionable_response
             }
     
     problem_summary = generate_problem_summary(row, filename, "general")
+    actionable_response = generate_actionable_response("general", row, filename)
     return {
         "severity": "MEDIUM", 
         "reason": "Standard security finding", 
         "pattern": "general",
-        "problem_summary": problem_summary
+        "problem_summary": problem_summary,
+        "actionable_response": actionable_response
     }
 
 def extract_key_info(row, filename):
@@ -160,6 +193,7 @@ def process_all_findings(csv_files):
                 "Reason": severity_info["reason"],
                 "Pattern": severity_info["pattern"],
                 "ProblemSummary": severity_info["problem_summary"],
+                "ActionableResponse": severity_info["actionable_response"],
                 **key_info
             }
             
@@ -196,6 +230,7 @@ def create_priority_summary(findings):
     # Get top 10 critical findings
     critical_findings = [f for f in findings if f["Severity"] == "CRITICAL"]
     summary["top_critical"] = critical_findings[:10]
+    summary["all_findings"] = findings
     
     return summary
 
@@ -215,7 +250,7 @@ def generate_readable_report(summary, output_file):
         f.write(f"High Priority Findings: {summary['high_count']}\n\n")
         
         if summary['critical_count'] > 0:
-            f.write("🚨 IMMEDIATE ACTION REQUIRED - CRITICAL FINDINGS DETECTED 🚨\n\n")
+            f.write("*** IMMEDIATE ACTION REQUIRED - CRITICAL FINDINGS DETECTED ***\n\n")
         
         # Top Critical Findings
         if summary['top_critical']:
@@ -234,7 +269,8 @@ def generate_readable_report(summary, output_file):
                     f.write(f"   Details: {' | '.join(key_details[:3])}\n")
                 
                 f.write(f"   Source: {finding.get('SourceFile', 'unknown')}\n")
-                f.write(f"   Impact: {finding['Reason']}\n\n")
+                f.write(f"   Impact: {finding['Reason']}\n")
+                f.write(f"   Action: {finding.get('ActionableResponse', 'Review and remediate')}\n\n")n\n")
         
         # Findings by Category
         f.write("FINDINGS BY SECURITY CATEGORY\n")
@@ -265,12 +301,31 @@ def generate_readable_report(summary, output_file):
         
         f.write("\n")
         
-        # Findings by Source File
+        # Findings by Source File with top critical finding
         f.write("FINDINGS BY AUDIT COMPONENT\n")
         f.write("-" * 30 + "\n")
+        
+        # Group findings by source file
+        findings_by_source = defaultdict(list)
+        for finding in summary.get('all_findings', []):
+            source = finding.get('SourceFile', 'unknown')
+            findings_by_source[source].append(finding)
+        
         sorted_sources = sorted(summary['by_source'].items(), key=lambda x: x[1], reverse=True)
         for source, count in sorted_sources[:10]:
             f.write(f"{source}: {count} findings\n")
+            
+            # Find most critical finding in this source
+            source_findings = findings_by_source.get(source, [])
+            if source_findings:
+                # Sort by severity
+                severity_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
+                source_findings.sort(key=lambda x: severity_order.get(x["Severity"], 4))
+                top_finding = source_findings[0]
+                
+                f.write(f"   Most Critical: {top_finding.get('ProblemSummary', 'Unknown issue')}\n")
+                f.write(f"   Severity: {top_finding['Severity']}\n")
+            f.write("\n")
         
         f.write("\n")
         
@@ -335,7 +390,7 @@ def main():
     print(f"[INFO] High priority findings: {summary['high_count']}")
     
     if summary['critical_count'] > 0:
-        print(f"\n🚨 WARNING: {summary['critical_count']} CRITICAL findings require immediate attention!")
+        print(f"\n*** WARNING: {summary['critical_count']} CRITICAL findings require immediate attention! ***")
 
 if __name__ == "__main__":
     main()
