@@ -523,21 +523,7 @@ def process_all_findings(csv_files):
                 ""
             )
             
-            # Debug: Test direct service role check
-            if "aft-" in str(role_for_dependency).lower():
-                direct_check = is_aws_service_role(role_for_dependency)
-                print(f"[DEBUG] Direct check for '{role_for_dependency}': {direct_check}")
-                if direct_check:
-                    service_dependency = f"{direct_check['description']} - {direct_check['function']}"
-                    print(f"[DEBUG] Setting service_dependency to: {service_dependency}")
-                else:
-                    service_dependency = get_service_dependency(severity_info["pattern"], row, role_for_dependency)
-            else:
-                service_dependency = get_service_dependency(severity_info["pattern"], row, role_for_dependency)
-            
-            # Debug: Check what's being stored
-            if "aft-" in str(role_for_dependency).lower():
-                print(f"[DEBUG] Storing ServiceDependency: '{service_dependency}' for role: '{role_for_dependency}'")
+            service_dependency = get_service_dependency(severity_info["pattern"], row, role_for_dependency)
             
             finding = {
                 "Severity": severity_info["severity"],
@@ -548,10 +534,6 @@ def process_all_findings(csv_files):
                 "ServiceDependency": service_dependency,
                 **key_info
             }
-            
-            # Debug: Verify what's in the finding
-            if "aft-" in str(role_for_dependency).lower():
-                print(f"[DEBUG] Finding ServiceDependency field: '{finding.get('ServiceDependency', 'MISSING')}'")
             
             all_findings.append(finding)
     
@@ -591,10 +573,7 @@ def create_priority_summary(findings):
     
     # Get top critical findings
     critical_findings = [f for f in findings if f["Severity"] == "CRITICAL"]
-    # Debug: Check what's being put in summary
-    for finding in critical_findings[:3]:
-        if "aft-" in str(finding.get('RoleName', '')).lower():
-            print(f"[DEBUG] Critical finding ServiceDependency before summary: '{finding.get('ServiceDependency', 'MISSING')}'")
+
     summary["top_critical"] = critical_findings
     summary["all_findings"] = findings
     
@@ -624,10 +603,7 @@ def generate_readable_report(summary, output_file, max_items=20):
         if summary['top_critical']:
             f.write(f"TOP {min(len(summary['top_critical']), max_items)} CRITICAL FINDINGS (IMMEDIATE ATTENTION)\n")
             f.write("-" * 50 + "\n")
-            # Debug: Check what's in the summary
-            for finding in summary['top_critical'][:3]:
-                if "aft-" in str(finding.get('RoleName', '')).lower():
-                    print(f"[DEBUG] Summary finding ServiceDependency: '{finding.get('ServiceDependency', 'MISSING')}'")
+
             for i, finding in enumerate(summary['top_critical'][:max_items], 1):
                 f.write(f"{i}. {finding.get('ProblemSummary', finding['Reason'])}\n")
                 
@@ -642,11 +618,7 @@ def generate_readable_report(summary, output_file, max_items=20):
                 
                 f.write(f"   Source: {finding.get('SourceFile', 'unknown')}\n")
                 f.write(f"   Impact: {finding['Reason']}\n")
-                # Debug: Check what we're trying to display
-                dep_value = finding.get('ServiceDependency', 'None identified')
-                if "aft-" in str(finding.get('RoleName', '')).lower():
-                    print(f"[DEBUG] Displaying ServiceDependency: '{dep_value}' for role: '{finding.get('RoleName', 'Unknown')}'")
-                f.write(f"   Service Dependency: {dep_value}\n")
+                f.write(f"   Service Dependency: {finding.get('ServiceDependency', 'None identified')}\n")
                 f.write(f"   Action: {finding.get('ActionableResponse', 'Review and remediate')}\n\n")
         
         # Findings by Category
