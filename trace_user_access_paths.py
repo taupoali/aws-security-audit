@@ -41,6 +41,14 @@ def load_account_data(data_dir):
             
             for data_type, filename in csv_files.items():
                 file_path = os.path.join(folder_path, filename)
+                
+                # Special handling for identity_center - check root directory if not found in account folder
+                if data_type == 'identity_center' and not os.path.exists(file_path):
+                    root_file_path = os.path.join(data_dir, filename)
+                    if os.path.exists(root_file_path):
+                        file_path = root_file_path
+                        print(f"[INFO] Using organization-wide Identity Center file: {root_file_path}")
+                
                 if os.path.exists(file_path):
                     try:
                         with open(file_path, 'r', newline='', encoding='utf-8') as f:
