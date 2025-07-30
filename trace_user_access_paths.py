@@ -30,15 +30,15 @@ def load_account_data(data_dir):
                 display_name = folder_name
             
             accounts[display_name] = {}
-        
-        # Load relevant CSV files
-        csv_files = {
-            'iam_roles': 'iam_roles.csv',
-            'escalation_chains': 'escalation_chains.csv', 
-            'cross_account_access': 'cross_account_findings.csv',
-            'identity_center': 'identity_center_assignments.csv'
-        }
-        
+            
+            # Load relevant CSV files
+            csv_files = {
+                'iam_roles': 'iam_roles.csv',
+                'escalation_chains': 'escalation_chains.csv', 
+                'cross_account_access': 'cross_account_findings.csv',
+                'identity_center': 'identity_center_assignments.csv'
+            }
+            
             for data_type, filename in csv_files.items():
                 file_path = os.path.join(folder_path, filename)
                 if os.path.exists(file_path):
