@@ -41,22 +41,11 @@ def load_account_data(data_dir):
             csv_files = {
                 'iam_roles': 'iam_roles.csv',
                 'escalation_chains': 'escalation_chains.csv', 
-                'cross_account_access': 'cross_account_findings.csv',
-                'identity_center': 'identity_center_assignments.csv'
+                'cross_account_access': 'cross_account_findings.csv'
             }
             
             for data_type, filename in csv_files.items():
                 file_path = os.path.join(folder_path, filename)
-                
-                # Special handling for identity_center - check root directory if not found in account folder
-                if data_type == 'identity_center' and not os.path.exists(file_path):
-                    root_file_path = os.path.join(data_dir, filename)
-                    print(f"[DEBUG] Looking for Identity Center file in root: {root_file_path}")
-                    if os.path.exists(root_file_path):
-                        file_path = root_file_path
-                        print(f"[INFO] Using organization-wide Identity Center file: {root_file_path}")
-                    else:
-                        print(f"[DEBUG] Identity Center file not found in root directory either")
                 
                 if os.path.exists(file_path):
                     try:
@@ -69,29 +58,39 @@ def load_account_data(data_dir):
                         print(f"[WARNING] Failed to load {file_path}: {e}")
                         accounts[display_name][data_type] = []
                 else:
-                    if data_type == 'identity_center':
-                        print(f"[WARNING] Identity Center file not found: {file_path}")
-                    elif data_type == 'escalation_chains':
+                    if data_type == 'escalation_chains':
                         print(f"[INFO] No escalation chains file for {display_name} - no privilege escalation paths found")
                     else:
                         print(f"[DEBUG] Optional file not found: {file_path}")
                     accounts[display_name][data_type] = []
     
-    return accounts
+    # Load organization-wide Identity Center data
+    identity_center_data = []
+    identity_center_file = os.path.join(data_dir, 'identity_center_assignments.csv')
+    if os.path.exists(identity_center_file):
+        try:
+            with open(identity_center_file, 'r', newline='', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                identity_center_data = list(reader)
+                print(f"[INFO] Loaded {len(identity_center_data)} Identity Center assignments from root directory")
+        except Exception as e:
+            print(f"[WARNING] Failed to load Identity Center file: {e}")
+    else:
+        print(f"[WARNING] Identity Center file not found: {identity_center_file}")
+    
+    return accounts, identity_center_data
 
-def extract_user_identities(accounts):
+def extract_user_identities(identity_center_data):
     """Extract all user identities from Identity Center assignments"""
     users = set()
     
-    print(f"[DEBUG] Extracting user identities from {len(accounts)} accounts...")
+    print(f"[DEBUG] Extracting user identities from {len(identity_center_data)} Identity Center records...")
     
-    for account_name, data in accounts.items():
-        identity_center_data = data.get('identity_center', [])
-        print(f"[DEBUG] Account {account_name}: {len(identity_center_data)} identity center records")
-        
-        for i, assignment in enumerate(identity_center_data[:3]):  # Only check first 3 records
+    if identity_center_data:
+        # Show sample records
+        for i, assignment in enumerate(identity_center_data[:3]):
             print(f"[DEBUG] Sample record {i+1}: {assignment}")
-            
+        
         for assignment in identity_center_data:
             # Look for user identifiers in various fields
             for field in ['PrincipalName', 'UserName', 'User', 'Principal', 'Subject']:
@@ -100,7 +99,7 @@ def extract_user_identities(accounts):
                     print(f"[DEBUG] Checking field {field}: '{user_id}'")
                     if '@' in user_id or 'user' in user_id.lower():
                         users.add(user_id)
-                        print(f"[DEBUG] Found user: {user_id} in {account_name}")
+                        print(f"[DEBUG] Found user: {user_id}")
                     else:
                         print(f"[DEBUG] Rejected: '{user_id}' (no @ or 'user')")
     
@@ -111,25 +110,33 @@ def extract_user_identities(accounts):
         print("[DEBUG] No users found - check CSV field names and data format")
     return sorted(users)
 
-def find_user_roles(user_identity, accounts):
+def find_user_roles(user_identity, accounts, identity_center_data):
     """Find all roles a user can access across accounts"""
     user_roles = defaultdict(list)
     
-    for account_name, data in accounts.items():
-        # Check Identity Center assignments
-        for assignment in data.get('identity_center', []):
-            principal = assignment.get('PrincipalName') or assignment.get('UserName') or assignment.get('User', '')
-            role_name = assignment.get('PermissionSetName') or assignment.get('RoleName') or assignment.get('Role', '')
-            
-            if user_identity.lower() in principal.lower() and role_name:
-                user_roles[account_name].append({
-                    'role_name': role_name,
-                    'access_type': 'Identity Center Assignment',
-                    'principal': principal,
-                    'source': 'identity_center_assignments.csv'
-                })
+    # Check Identity Center assignments
+    for assignment in identity_center_data:
+        principal = assignment.get('PrincipalName') or assignment.get('UserName') or assignment.get('User', '')
+        role_name = assignment.get('PermissionSetName') or assignment.get('RoleName') or assignment.get('Role', '')
+        account_id = assignment.get('AccountId', '')
         
-        # Check for direct IAM role assumptions (less common but possible)
+        if user_identity.lower() in principal.lower() and role_name and account_id:
+            # Find matching account name
+            account_name = f"Account-{account_id}"
+            for acc_name in accounts.keys():
+                if account_id in acc_name:
+                    account_name = acc_name
+                    break
+            
+            user_roles[account_name].append({
+                'role_name': role_name,
+                'access_type': 'Identity Center Assignment',
+                'principal': principal,
+                'source': 'identity_center_assignments.csv'
+            })
+    
+    # Check for direct IAM role assumptions in each account
+    for account_name, data in accounts.items():
         for role in data.get('iam_roles', []):
             trust_policy = str(role.get('TrustPolicy', '') + role.get('AssumeRolePolicyDocument', '')).lower()
             role_name = role.get('RoleName') or role.get('Role Name', '')
