@@ -87,9 +87,19 @@ def extract_user_identities(identity_center_data):
     print(f"[DEBUG] Extracting user identities from {len(identity_center_data)} Identity Center records...")
     
     if identity_center_data:
+        # Show CSV field names
+        first_record = identity_center_data[0]
+        print(f"[DEBUG] CSV field names: {list(first_record.keys())}")
+        
         # Show sample records
         for i, assignment in enumerate(identity_center_data[:3]):
             print(f"[DEBUG] Sample record {i+1}: {assignment}")
+        
+        # Check if we're looking for the right fields
+        expected_fields = ['PrincipalName', 'UserName', 'User', 'Principal', 'Subject']
+        actual_fields = list(first_record.keys())
+        print(f"[DEBUG] Looking for fields: {expected_fields}")
+        print(f"[DEBUG] Available fields: {actual_fields}")
         
         for assignment in identity_center_data:
             # Look for user identifiers in various fields
@@ -102,12 +112,22 @@ def extract_user_identities(identity_center_data):
                         print(f"[DEBUG] Found user: {user_id}")
                     else:
                         print(f"[DEBUG] Rejected: '{user_id}' (no @ or 'user')")
+                        
+            # If no expected fields found, show what fields do exist with values
+            if not any(field in assignment for field in expected_fields):
+                print(f"[DEBUG] No expected fields found. Available fields with values:")
+                for key, value in assignment.items():
+                    if value and str(value).strip():
+                        print(f"[DEBUG]   {key}: '{value}'")
+                break  # Only show this once
     
     print(f"[DEBUG] Total unique users found: {len(users)}")
     if users:
         print(f"[DEBUG] Users: {list(users)[:5]}...")  # Show first 5 users
     else:
         print("[DEBUG] No users found - check CSV field names and data format")
+        if identity_center_data:
+            print(f"[DEBUG] Try updating the field names in the script to match your CSV structure")
     return sorted(users)
 
 def find_user_roles(user_identity, accounts, identity_center_data):
