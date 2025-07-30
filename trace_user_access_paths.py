@@ -83,15 +83,22 @@ def extract_user_identities(accounts):
     """Extract all user identities from Identity Center assignments"""
     users = set()
     
+    print(f"[DEBUG] Extracting user identities from {len(accounts)} accounts...")
+    
     for account_name, data in accounts.items():
-        for assignment in data.get('identity_center', []):
+        identity_center_data = data.get('identity_center', [])
+        print(f"[DEBUG] Account {account_name}: {len(identity_center_data)} identity center records")
+        
+        for assignment in identity_center_data:
             # Look for user identifiers in various fields
             for field in ['PrincipalName', 'UserName', 'User', 'Principal', 'Subject']:
                 if field in assignment and assignment[field]:
                     user_id = assignment[field].strip()
                     if '@' in user_id or 'user' in user_id.lower():
                         users.add(user_id)
+                        print(f"[DEBUG] Found user: {user_id} in {account_name}")
     
+    print(f"[DEBUG] Total unique users found: {len(users)}")
     return sorted(users)
 
 def find_user_roles(user_identity, accounts):
