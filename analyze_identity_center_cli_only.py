@@ -125,35 +125,37 @@ def create_assignments_from_cli_data(accounts, profile=None):
     
     return all_assignments
 
-def create_user_mapping_helper(output_dir):
+def create_user_mapping_helper(output_dir, profile=None):
     """Create helper files for manual user mapping"""
     
     # Create a simple script to help with user discovery
     helper_script = os.path.join(output_dir, 'find_sso_users.sh')
     
-    script_content = '''#!/bin/bash
+    profile_arg = f" --profile {profile}" if profile else ""
+    
+    script_content = f'''#!/bin/bash
 # Helper script to find SSO users from CloudTrail
 # Run this in each account or from management account
 
 echo "=== Finding SSO Users from CloudTrail ==="
 
 # Look for AssumeRoleWithSAML events (last 7 days)
-aws logs filter-log-events \\
+aws{profile_arg} logs filter-log-events \\
     --log-group-name CloudTrail-SSO \\
     --start-time $(date -d '7 days ago' +%s)000 \\
     --filter-pattern "AssumeRoleWithSAML" \\
     --query 'events[*].message' \\
-    --output text | grep -oE '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}' | sort -u
+    --output text | grep -oE '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{{2,}}' | sort -u
 
 echo ""
 echo "=== Finding SSO Users from CloudTrail Events ==="
 
-# Alternative: Look at CloudTrail events directly
-aws cloudtrail lookup-events \\
+# Alternative: Look at CloudTrail events directly (get more results)
+aws{profile_arg} cloudtrail lookup-events \\
     --lookup-attributes AttributeKey=EventName,AttributeValue=AssumeRoleWithSAML \\
-    --max-items 50 \\
+    --max-items 200 \\
     --query 'Events[*].CloudTrailEvent' \\
-    --output text | grep -oE '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}' | sort -u
+    --output text | grep -oE '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{{2,}}' | sort -u
 '''
     
     with open(helper_script, 'w') as f:
@@ -170,17 +172,17 @@ aws cloudtrail lookup-events \\
     # Create PowerShell version for Windows
     ps_script = os.path.join(output_dir, 'find_sso_users.ps1')
     
-    ps_content = '''# PowerShell script to find SSO users from CloudTrail
+    ps_content = f'''# PowerShell script to find SSO users from CloudTrail
 Write-Host "=== Finding SSO Users from CloudTrail ==="
 
-# Look for AssumeRoleWithSAML events
-$events = aws cloudtrail lookup-events --lookup-attributes AttributeKey=EventName,AttributeValue=AssumeRoleWithSAML --max-items 50 --query 'Events[*].CloudTrailEvent' --output text
+# Look for AssumeRoleWithSAML events (get more results)
+$events = aws{profile_arg} cloudtrail lookup-events --lookup-attributes AttributeKey=EventName,AttributeValue=AssumeRoleWithSAML --max-items 200 --query 'Events[*].CloudTrailEvent' --output text
 
 # Extract email addresses
-$emails = [regex]::Matches($events, '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}') | ForEach-Object { $_.Value } | Sort-Object -Unique
+$emails = [regex]::Matches($events, '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{{2,}}') | ForEach-Object {{ $_.Value }} | Sort-Object -Unique
 
 Write-Host "Found SSO Users:"
-$emails | ForEach-Object { Write-Host "  $_" }
+$emails | ForEach-Object {{ Write-Host "  $_" }}
 '''
     
     with open(ps_script, 'w') as f:
@@ -231,7 +233,7 @@ def main():
         
         # Create helper files
         output_dir = os.path.dirname(args.output) or '.'
-        create_user_mapping_helper(output_dir)
+        create_user_mapping_helper(output_dir, args.profile)
         
         print("\n[NEXT STEPS]")
         print("1. Run the helper scripts to find actual SSO users:")
