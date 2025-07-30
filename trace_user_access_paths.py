@@ -102,8 +102,8 @@ def extract_user_identities(identity_center_data):
         print(f"[DEBUG] Available fields: {actual_fields}")
         
         for assignment in identity_center_data:
-            # Look for user identifiers in various fields
-            for field in ['PrincipalName', 'UserName', 'User', 'Principal', 'Subject']:
+            # Look for user identifiers in various fields (updated for actual CSV structure)
+            for field in ['PrincipalId', 'PrincipalName', 'UserName', 'User', 'Principal', 'Subject']:
                 if field in assignment and assignment[field]:
                     user_id = assignment[field].strip()
                     print(f"[DEBUG] Checking field {field}: '{user_id}'")
@@ -136,7 +136,7 @@ def find_user_roles(user_identity, accounts, identity_center_data):
     
     # Check Identity Center assignments
     for assignment in identity_center_data:
-        principal = assignment.get('PrincipalName') or assignment.get('UserName') or assignment.get('User', '')
+        principal = assignment.get('PrincipalId') or assignment.get('PrincipalName') or assignment.get('UserName') or assignment.get('User', '')
         role_name = assignment.get('PermissionSetName') or assignment.get('RoleName') or assignment.get('Role', '')
         account_id = assignment.get('AccountId', '')
         
