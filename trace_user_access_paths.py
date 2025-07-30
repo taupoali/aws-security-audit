@@ -37,7 +37,7 @@ def load_account_data(data_dir):
             
             accounts[display_name] = {}
             
-            # Load relevant CSV files
+            # Load relevant CSV files (optional - script works without them)
             csv_files = {
                 'iam_roles': 'iam_roles.csv',
                 'escalation_chains': 'escalation_chains.csv', 
@@ -69,7 +69,12 @@ def load_account_data(data_dir):
                         print(f"[WARNING] Failed to load {file_path}: {e}")
                         accounts[display_name][data_type] = []
                 else:
-                    print(f"[DEBUG] File not found: {file_path}")
+                    if data_type == 'identity_center':
+                        print(f"[WARNING] Identity Center file not found: {file_path}")
+                    elif data_type == 'escalation_chains':
+                        print(f"[INFO] No escalation chains file for {display_name} - no privilege escalation paths found")
+                    else:
+                        print(f"[DEBUG] Optional file not found: {file_path}")
                     accounts[display_name][data_type] = []
     
     return accounts
@@ -128,6 +133,11 @@ def trace_escalation_paths(user_roles, accounts):
     
     for account_name, roles in user_roles.items():
         account_data = accounts[account_name]
+        
+        # Skip if no escalation chains data available
+        if not account_data.get('escalation_chains'):
+            print(f"[INFO] No escalation chains data for {account_name} - skipping escalation analysis")
+            continue
         
         for role_info in roles:
             initial_role = role_info['role_name']
@@ -384,9 +394,10 @@ def generate_user_journey_report(user_identity, accounts, output_file):
             f.write("\n")
         
         # Privilege Escalation Paths
+        f.write("PRIVILEGE ESCALATION PATHS\n")
+        f.write("-" * 35 + "\n")
+        
         if escalation_paths:
-            f.write("PRIVILEGE ESCALATION PATHS\n")
-            f.write("-" * 35 + "\n")
             f.write(f"Found {len(escalation_paths)} potential escalation paths:\n\n")
             
             for i, path in enumerate(escalation_paths, 1):
@@ -397,9 +408,13 @@ def generate_user_journey_report(user_identity, accounts, output_file):
                 f.write(f"   Target: {path['target_role']}\n")
                 f.write(f"   Method: {path['access_type']}\n\n")
         else:
-            f.write("PRIVILEGE ESCALATION PATHS\n")
-            f.write("-" * 35 + "\n")
-            f.write("No privilege escalation paths detected.\n\n")
+            # Check if any accounts had escalation data
+            accounts_with_chains = [name for name, data in accounts.items() if data.get('escalation_chains')]
+            if accounts_with_chains:
+                f.write("No privilege escalation paths detected for this user.\n")
+            else:
+                f.write("No escalation chains data available - run detect_chain_escalation_parallel.py first.\n")
+            f.write("\n")
         
         # Cross-Account Access
         if cross_account_paths:
