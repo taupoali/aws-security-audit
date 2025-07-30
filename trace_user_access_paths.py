@@ -10,12 +10,26 @@ def load_account_data(data_dir):
     """Load CSV data from all account folders"""
     accounts = {}
     
-    # Find all account folders
-    account_folders = glob.glob(os.path.join(data_dir, "account*"))
+    # Find all subdirectories in data_collected
+    if not os.path.exists(data_dir):
+        return accounts
     
-    for folder in account_folders:
-        account_name = os.path.basename(folder)
-        accounts[account_name] = {}
+    for item in os.listdir(data_dir):
+        folder_path = os.path.join(data_dir, item)
+        if os.path.isdir(folder_path):
+            # Extract account ID from folder name (assumes folder ends with account ID)
+            folder_name = os.path.basename(folder_path)
+            # Look for 12-digit account ID at the end of folder name
+            import re
+            account_id_match = re.search(r'(\d{12})$', folder_name)
+            if account_id_match:
+                account_id = account_id_match.group(1)
+                display_name = f"{folder_name} ({account_id})"
+            else:
+                # Fallback to folder name if no account ID pattern found
+                display_name = folder_name
+            
+            accounts[display_name] = {}
         
         # Load relevant CSV files
         csv_files = {
@@ -25,18 +39,18 @@ def load_account_data(data_dir):
             'identity_center': 'identity_center_assignments.csv'
         }
         
-        for data_type, filename in csv_files.items():
-            file_path = os.path.join(folder, filename)
-            if os.path.exists(file_path):
-                try:
-                    with open(file_path, 'r', newline='', encoding='utf-8') as f:
-                        reader = csv.DictReader(f)
-                        accounts[account_name][data_type] = list(reader)
-                except Exception as e:
-                    print(f"[WARNING] Failed to load {file_path}: {e}")
-                    accounts[account_name][data_type] = []
-            else:
-                accounts[account_name][data_type] = []
+            for data_type, filename in csv_files.items():
+                file_path = os.path.join(folder_path, filename)
+                if os.path.exists(file_path):
+                    try:
+                        with open(file_path, 'r', newline='', encoding='utf-8') as f:
+                            reader = csv.DictReader(f)
+                            accounts[display_name][data_type] = list(reader)
+                    except Exception as e:
+                        print(f"[WARNING] Failed to load {file_path}: {e}")
+                        accounts[display_name][data_type] = []
+                else:
+                    accounts[display_name][data_type] = []
     
     return accounts
 
