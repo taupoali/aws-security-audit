@@ -1,54 +1,81 @@
 #!/usr/bin/env python3
 
-import boto3
+import subprocess
 import csv
 import argparse
 import json
 from datetime import datetime
-from botocore.exceptions import ClientError
+
+def run_aws_command(command, profile=None):
+    """Run AWS CLI command and return JSON output"""
+    cmd = ['aws'] + command
+    if profile:
+        cmd.extend(['--profile', profile])
+    
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        if result.stdout.strip():
+            return json.loads(result.stdout)
+        return {}
+    except subprocess.CalledProcessError as e:
+        print(f"[ERROR] Command failed: {' '.join(cmd)}")
+        print(f"[ERROR] Error: {e.stderr}")
+        return {}
+    except json.JSONDecodeError as e:
+        print(f"[ERROR] Could not parse JSON output from: {' '.join(cmd)}")
+        return {}
 
 def get_iam_roles(profile=None):
-    """Get all IAM roles in the account"""
-    try:
-        if profile:
-            session = boto3.Session(profile_name=profile)
-        else:
-            session = boto3.Session()
-        
-        iam = session.client('iam')
-        roles = []
-        
-        paginator = iam.get_paginator('list_roles')
-        for page in paginator.paginate():
-            for role in page['Roles']:
-                # Get trust policy
-                trust_policy = role.get('AssumeRolePolicyDocument', {})
-                
-                roles.append({
-                    'RoleName': role['RoleName'],
-                    'Path': role['Path'],
-                    'RoleId': role['RoleId'],
-                    'Arn': role['Arn'],
-                    'CreateDate': role['CreateDate'].isoformat(),
-                    'AssumeRolePolicyDocument': json.dumps(trust_policy, separators=(',', ':')),
-                    'Description': role.get('Description', ''),
-                    'MaxSessionDuration': role.get('MaxSessionDuration', 3600),
-                    'Tags': json.dumps(role.get('Tags', []), separators=(',', ':'))
-                })
-        
-        return roles
+    """Get all IAM roles in the account using AWS CLI"""
+    print(f"[INFO] Getting IAM roles using AWS CLI...")
     
-    except ClientError as e:
-        print(f"[ERROR] Failed to get IAM roles: {e}")
+    # Get list of roles
+    roles_data = run_aws_command(['iam', 'list-roles'], profile)
+    
+    if not roles_data or 'Roles' not in roles_data:
+        print("[ERROR] No roles data returned")
         return []
+    
+    roles = []
+    for role in roles_data['Roles']:
+        # Convert datetime to string if it's not already
+        create_date = role.get('CreateDate', '')
+        if isinstance(create_date, str):
+            # Already a string, keep as is
+            create_date_str = create_date
+        else:
+            # Convert to ISO format
+            create_date_str = str(create_date)
+        
+        roles.append({
+            'RoleName': role.get('RoleName', ''),
+            'Path': role.get('Path', '/'),
+            'RoleId': role.get('RoleId', ''),
+            'Arn': role.get('Arn', ''),
+            'CreateDate': create_date_str,
+            'AssumeRolePolicyDocument': json.dumps(role.get('AssumeRolePolicyDocument', {}), separators=(',', ':')),
+            'Description': role.get('Description', ''),
+            'MaxSessionDuration': role.get('MaxSessionDuration', 3600),
+            'Tags': json.dumps(role.get('Tags', []), separators=(',', ':'))
+        })
+    
+    return roles
 
 def main():
-    parser = argparse.ArgumentParser(description="Extract IAM roles to CSV")
+    parser = argparse.ArgumentParser(description="Extract IAM roles to CSV using AWS CLI")
     parser.add_argument("--profile", help="AWS profile to use")
     parser.add_argument("--output", default="iam_roles.csv", help="Output CSV file")
     args = parser.parse_args()
     
-    print(f"[INFO] Extracting IAM roles using profile: {args.profile or 'default'}")
+    print(f"[INFO] Extracting IAM roles using AWS CLI with profile: {args.profile or 'default'}")
+    
+    # Test AWS CLI access
+    test_result = run_aws_command(['sts', 'get-caller-identity'], args.profile)
+    if not test_result:
+        print("[ERROR] Could not access AWS CLI or invalid credentials")
+        return
+    
+    print(f"[INFO] Connected as: {test_result.get('Arn', 'Unknown')}")
     
     # Get roles
     roles = get_iam_roles(args.profile)
