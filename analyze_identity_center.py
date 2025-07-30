@@ -84,14 +84,21 @@ def get_permission_sets(instance_arn, profile=None):
     
     permission_set_arns = json.loads(result).get("PermissionSets", [])
     permission_sets = []
+    total_ps = len(permission_set_arns)
     
-    for ps_arn in permission_set_arns:
+    print(f"[INFO] Processing {total_ps} permission sets...")
+    
+    for i, ps_arn in enumerate(permission_set_arns, 1):
+        print(f"[PROGRESS] Processing permission set {i}/{total_ps}")
+        
         # Get permission set details
         details_cmd = ["aws", "sso-admin", "describe-permission-set", "--instance-arn", instance_arn, "--permission-set-arn", ps_arn, "--output", "json"]
         details_result = run_aws_command(details_cmd, profile)
         
         if details_result:
             permission_set = json.loads(details_result).get("PermissionSet", {})
+            ps_name = permission_set.get("Name", "Unknown")
+            print(f"[INFO] Processing permission set: {ps_name}")
             
             # Get inline policy
             inline_cmd = ["aws", "sso-admin", "get-inline-policy-for-permission-set", "--instance-arn", instance_arn, "--permission-set-arn", ps_arn, "--output", "json"]
@@ -136,7 +143,12 @@ def get_account_assignments(instance_arn, permission_set_arn, profile=None):
     account_ids = json.loads(result).get("AccountIds", [])
     assignments = []
     
-    for account_id in account_ids:
+    if account_ids:
+        print(f"[INFO] Getting assignments for {len(account_ids)} accounts")
+    
+    for i, account_id in enumerate(account_ids, 1):
+        print(f"[PROGRESS] Processing account {i}/{len(account_ids)}: {account_id}")
+        
         # Get assignments for this account
         assign_cmd = ["aws", "sso-admin", "list-account-assignments", "--instance-arn", instance_arn, "--permission-set-arn", permission_set_arn, "--account-id", account_id, "--output", "json"]
         assign_result = run_aws_command(assign_cmd, profile)
@@ -246,7 +258,8 @@ def analyze_permission_set(permission_set):
 
 def analyze_identity_center(profile=None):
     """Analyze IAM Identity Center configuration"""
-    print("[INFO] Analyzing IAM Identity Center configuration...")
+    print("[INFO] Starting IAM Identity Center analysis...")
+    print("[STEP 1/5] Getting Identity Center instance...")
     
     # Get Identity Center instance
     instance = get_identity_center_instance(profile)
@@ -262,22 +275,30 @@ def analyze_identity_center(profile=None):
     identity_store_id = instance.get("IdentityStoreId")
     
     print(f"[INFO] Found IAM Identity Center instance: {instance_arn}")
+    print("[STEP 2/5] Getting permission sets...")
     
     # Get permission sets
     permission_sets = get_permission_sets(instance_arn, profile)
-    print(f"[INFO] Found {len(permission_sets)} permission sets")
+    print(f"[INFO] Retrieved {len(permission_sets)} permission sets")
+    print("[STEP 3/5] Analyzing permission sets and getting assignments...")
     
     # Analyze permission sets
     findings = []
     assignments = []
     
-    for ps in permission_sets:
+    print(f"[INFO] Analyzing {len(permission_sets)} permission sets for security issues...")
+    
+    for i, ps in enumerate(permission_sets, 1):
+        ps_name = ps.get("Name", "Unknown")
+        print(f"[PROGRESS] Analyzing permission set {i}/{len(permission_sets)}: {ps_name}")
+        
         # Analyze permission set
         ps_findings = analyze_permission_set(ps)
         findings.extend(ps_findings)
         
         # Get account assignments
         ps_arn = ps.get("PermissionSetArn")
+        print(f"[INFO] Getting account assignments for: {ps_name}")
         ps_assignments = get_account_assignments(instance_arn, ps_arn, profile)
         
         for assignment in ps_assignments:
@@ -285,13 +306,18 @@ def analyze_identity_center(profile=None):
             assignment["PermissionSetArn"] = ps_arn
         
         assignments.extend(ps_assignments)
+        print(f"[INFO] Found {len(ps_assignments)} assignments for {ps_name}")
     
+    print("[STEP 4/5] Checking identity source configuration...")
     # Check for AD integration
     identity_source = get_identity_source(identity_store_id, profile)
     identity_source_type = "Unknown"
     
     if identity_source:
         identity_source_type = identity_source.get("Type", "Unknown")
+        print(f"[INFO] Identity source type: {identity_source_type}")
+    
+    print("[STEP 5/5] Generating summary and recommendations...")
     
     # Generate summary
     summary = {
@@ -401,6 +427,7 @@ def main():
     
     start_time = datetime.now()
     print(f"[{start_time}] Starting IAM Identity Center analysis...")
+    print("[INFO] This may take several minutes depending on the number of permission sets and accounts...")
     
     # Analyze Identity Center
     analysis_result = analyze_identity_center(args.profile)
@@ -409,9 +436,11 @@ def main():
         print(f"[ERROR] {analysis_result['Message']}")
         return
     
+    print("[INFO] Generating recommendations...")
     # Generate recommendations
     recommendations = generate_recommendations(analysis_result)
     
+    print("[INFO] Exporting results to CSV files...")
     # Export results
     if analysis_result["Findings"]:
         export_to_csv(analysis_result["Findings"], args.findings_output)
@@ -448,6 +477,11 @@ def main():
     end_time = datetime.now()
     duration = end_time - start_time
     print(f"\n[{end_time}] Analysis completed. Duration: {duration}")
+    print(f"\n=== API Statistics ===")
+    print(f"Total API calls: {API_STATS['calls']}")
+    print(f"Cached responses: {API_STATS['cached']}")
+    print(f"Errors: {API_STATS['errors']}")
+    print(f"Timeouts: {API_STATS['timeouts']}")
 
 if __name__ == "__main__":
     main()
