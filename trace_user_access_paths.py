@@ -80,6 +80,29 @@ def load_account_data(data_dir):
     
     return accounts, identity_center_data
 
+def load_user_mapping(data_dir):
+    """Load user mapping from CSV file"""
+    user_mapping = {}
+    mapping_file = os.path.join(data_dir, 'user_mapping.csv')
+    
+    if os.path.exists(mapping_file):
+        try:
+            with open(mapping_file, 'r', newline='', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    principal_id = row.get('PrincipalId', '')
+                    friendly_name = row.get('FriendlyName', '') or row.get('Username', '') or f"User-{principal_id[:8]}"
+                    if principal_id:
+                        user_mapping[principal_id] = friendly_name
+            print(f"[INFO] Loaded {len(user_mapping)} user mappings from {mapping_file}")
+        except Exception as e:
+            print(f"[WARNING] Failed to load user mapping: {e}")
+    else:
+        print(f"[INFO] No user mapping file found at {mapping_file}")
+        print(f"[INFO] Run 'python create_user_mapping.py' to create user-friendly names")
+    
+    return user_mapping
+
 def extract_user_identities(identity_center_data):
     """Extract all user identities from Identity Center assignments"""
     users = set()
@@ -107,11 +130,12 @@ def extract_user_identities(identity_center_data):
                 if field in assignment and assignment[field]:
                     user_id = assignment[field].strip()
                     print(f"[DEBUG] Checking field {field}: '{user_id}'")
-                    if '@' in user_id or 'user' in user_id.lower():
+                    # Accept email addresses, usernames, or UUID-style identifiers
+                    if '@' in user_id or 'user' in user_id.lower() or (len(user_id) > 10 and '-' in user_id):
                         users.add(user_id)
                         print(f"[DEBUG] Found user: {user_id}")
                     else:
-                        print(f"[DEBUG] Rejected: '{user_id}' (no @ or 'user')")
+                        print(f"[DEBUG] Rejected: '{user_id}' (not email, username, or UUID format)")
                         
             # If no expected fields found, show what fields do exist with values
             if not any(field in assignment for field in expected_fields):
@@ -128,6 +152,7 @@ def extract_user_identities(identity_center_data):
         print("[DEBUG] No users found - check CSV field names and data format")
         if identity_center_data:
             print(f"[DEBUG] Try updating the field names in the script to match your CSV structure")
+            print(f"[DEBUG] Note: Identity Center uses UUID-style PrincipalIds, not email addresses")
     return sorted(users)
 
 def find_user_roles(user_identity, accounts, identity_center_data):
@@ -513,6 +538,9 @@ def main():
     # Extract all user identities from Identity Center data
     users = extract_user_identities(identity_center_data)
     
+    # Load user mapping for friendly names
+    user_mapping = load_user_mapping(data_dir)
+    
     if not users:
         print("[WARNING] No user identities found in Identity Center assignments")
         print("[INFO] You can manually specify a user identity")
@@ -523,7 +551,8 @@ def main():
     else:
         print(f"[INFO] Found {len(users)} user identities:")
         for i, user in enumerate(users, 1):
-            print(f"  {i}. {user}")
+            friendly_name = user_mapping.get(user, user)
+            print(f"  {i}. {friendly_name} ({user})")
         
         choice = input(f"\nSelect user (1-{len(users)}) or enter custom identity: ").strip()
         
@@ -538,7 +567,7 @@ def main():
     text_output = f"user_journey_{safe_user}_{timestamp}.txt"
     html_output = f"user_journey_{safe_user}_{timestamp}.html"
     
-    generate_user_journey_report(user_identity, accounts, identity_center_data, text_output)
+    generate_user_journey_report(user_identity, accounts, identity_center_data, user_mapping, text_output)
     
     # Generate HTML report
     user_roles = find_user_roles(user_identity, accounts, identity_center_data)
