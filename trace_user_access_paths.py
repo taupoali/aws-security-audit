@@ -89,16 +89,26 @@ def extract_user_identities(accounts):
         identity_center_data = data.get('identity_center', [])
         print(f"[DEBUG] Account {account_name}: {len(identity_center_data)} identity center records")
         
+        for i, assignment in enumerate(identity_center_data[:3]):  # Only check first 3 records
+            print(f"[DEBUG] Sample record {i+1}: {assignment}")
+            
         for assignment in identity_center_data:
             # Look for user identifiers in various fields
             for field in ['PrincipalName', 'UserName', 'User', 'Principal', 'Subject']:
                 if field in assignment and assignment[field]:
                     user_id = assignment[field].strip()
+                    print(f"[DEBUG] Checking field {field}: '{user_id}'")
                     if '@' in user_id or 'user' in user_id.lower():
                         users.add(user_id)
                         print(f"[DEBUG] Found user: {user_id} in {account_name}")
+                    else:
+                        print(f"[DEBUG] Rejected: '{user_id}' (no @ or 'user')")
     
     print(f"[DEBUG] Total unique users found: {len(users)}")
+    if users:
+        print(f"[DEBUG] Users: {list(users)[:5]}...")  # Show first 5 users
+    else:
+        print("[DEBUG] No users found - check CSV field names and data format")
     return sorted(users)
 
 def find_user_roles(user_identity, accounts):
@@ -465,7 +475,7 @@ def main():
         return
     
     print("[INFO] Loading account data...")
-    accounts = load_account_data(data_dir)
+    accounts, identity_center_data = load_account_data(data_dir)
     
     if not accounts:
         print("[ERROR] No account data found")
@@ -473,8 +483,8 @@ def main():
     
     print(f"[INFO] Loaded data from {len(accounts)} accounts")
     
-    # Extract all user identities
-    users = extract_user_identities(accounts)
+    # Extract all user identities from Identity Center data
+    users = extract_user_identities(identity_center_data)
     
     if not users:
         print("[WARNING] No user identities found in Identity Center assignments")
@@ -501,10 +511,10 @@ def main():
     text_output = f"user_journey_{safe_user}_{timestamp}.txt"
     html_output = f"user_journey_{safe_user}_{timestamp}.html"
     
-    generate_user_journey_report(user_identity, accounts, text_output)
+    generate_user_journey_report(user_identity, accounts, identity_center_data, text_output)
     
     # Generate HTML report
-    user_roles = find_user_roles(user_identity, accounts)
+    user_roles = find_user_roles(user_identity, accounts, identity_center_data)
     if user_roles:
         escalation_paths = trace_escalation_paths(user_roles, accounts)
         cross_account_paths = find_cross_account_access(user_roles, accounts)
