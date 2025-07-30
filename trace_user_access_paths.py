@@ -12,13 +12,19 @@ def load_account_data(data_dir):
     
     # Find all subdirectories in data_collected
     if not os.path.exists(data_dir):
+        print(f"[ERROR] Data directory does not exist: {data_dir}")
         return accounts
+    
+    print(f"[DEBUG] Scanning directory: {data_dir}")
+    print(f"[DEBUG] Directory contents: {os.listdir(data_dir)}")
     
     for item in os.listdir(data_dir):
         folder_path = os.path.join(data_dir, item)
         if os.path.isdir(folder_path):
             # Extract account ID from folder name (assumes folder ends with account ID)
             folder_name = os.path.basename(folder_path)
+            print(f"[DEBUG] Processing account folder: {folder_name}")
+            
             # Look for 12-digit account ID at the end of folder name
             import re
             account_id_match = re.search(r'(\d{12})$', folder_name)
@@ -45,19 +51,25 @@ def load_account_data(data_dir):
                 # Special handling for identity_center - check root directory if not found in account folder
                 if data_type == 'identity_center' and not os.path.exists(file_path):
                     root_file_path = os.path.join(data_dir, filename)
+                    print(f"[DEBUG] Looking for Identity Center file in root: {root_file_path}")
                     if os.path.exists(root_file_path):
                         file_path = root_file_path
                         print(f"[INFO] Using organization-wide Identity Center file: {root_file_path}")
+                    else:
+                        print(f"[DEBUG] Identity Center file not found in root directory either")
                 
                 if os.path.exists(file_path):
                     try:
                         with open(file_path, 'r', newline='', encoding='utf-8') as f:
                             reader = csv.DictReader(f)
-                            accounts[display_name][data_type] = list(reader)
+                            data_list = list(reader)
+                            accounts[display_name][data_type] = data_list
+                            print(f"[DEBUG] Loaded {len(data_list)} records from {file_path}")
                     except Exception as e:
                         print(f"[WARNING] Failed to load {file_path}: {e}")
                         accounts[display_name][data_type] = []
                 else:
+                    print(f"[DEBUG] File not found: {file_path}")
                     accounts[display_name][data_type] = []
     
     return accounts
