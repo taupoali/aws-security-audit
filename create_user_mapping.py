@@ -73,16 +73,51 @@ def create_user_mapping_file(identity_center_file, output_file, profile=None):
     
     print(f"[INFO] Using Identity Store ID: {identity_store_id}")
     
-    # Extract unique user IDs
+    # Extract unique user IDs from assignments with detailed debugging
     user_ids = set()
-    for assignment in assignments:
-        principal_id = assignment.get('PrincipalId', '')
-        principal_type = assignment.get('PrincipalType', '')
-        
-        if principal_id and principal_type == 'USER':
-            user_ids.add(principal_id)
+    group_ids = set()
+    invalid_records = 0
+    user_assignments = 0
+    group_assignments = 0
     
-    print(f"[INFO] Found {len(user_ids)} unique users")
+    print(f"[DEBUG] Analyzing {len(assignments)} assignment records...")
+    
+    # Show sample records first
+    for i, assignment in enumerate(assignments[:3]):
+        print(f"[DEBUG] Sample assignment {i+1}: {assignment}")
+    
+    for assignment in assignments:
+        principal_id = assignment.get('PrincipalId', '').strip()
+        principal_type = assignment.get('PrincipalType', '').strip()
+        
+        if not principal_id or not principal_type:
+            invalid_records += 1
+            continue
+            
+        if principal_type == 'USER':
+            user_ids.add(principal_id)
+            user_assignments += 1
+        elif principal_type == 'GROUP':
+            group_ids.add(principal_id)
+            group_assignments += 1
+        else:
+            print(f"[DEBUG] Unknown PrincipalType: '{principal_type}' for ID: '{principal_id}'")
+    
+    print(f"[INFO] Assignment breakdown:")
+    print(f"  - Total assignments: {len(assignments)}")
+    print(f"  - User assignments: {user_assignments}")
+    print(f"  - Group assignments: {group_assignments}")
+    print(f"  - Invalid/empty records: {invalid_records}")
+    print(f"  - Unique users: {len(user_ids)}")
+    print(f"  - Unique groups: {len(group_ids)}")
+    print(f"[INFO] Note: This only includes users/groups with AWS account assignments")
+    
+    if len(user_ids) < 50:  # If suspiciously low, show some user IDs
+        print(f"[DEBUG] Sample user IDs found: {list(user_ids)[:10]}")
+    
+    if len(user_ids) == 0:
+        print("[ERROR] No users found in assignments! Check CSV format and PrincipalType values")
+        return
     
     # Create user mapping
     user_mappings = []
@@ -120,16 +155,81 @@ def create_user_mapping_file(identity_center_file, output_file, profile=None):
     print(f"[SUCCESS] Created user mapping file: {output_file}")
     print(f"[INFO] Mapped {len(user_mappings)} users")
 
+def create_all_users_mapping(output_file, profile=None):
+    """Create user mapping for ALL Identity Center users"""
+    print(f"[INFO] Getting ALL Identity Center users...")
+    
+    # Get Identity Store ID
+    identity_store_id = get_identity_store_id(profile)
+    if not identity_store_id:
+        print("[ERROR] Could not get Identity Store ID")
+        return
+    
+    print(f"[INFO] Using Identity Store ID: {identity_store_id}")
+    
+    # Get all users from Identity Store
+    all_users = run_aws_command(['identitystore', 'list-users', '--identity-store-id', identity_store_id], profile)
+    
+    if not all_users or 'Users' not in all_users:
+        print("[ERROR] Could not retrieve users from Identity Store")
+        return
+    
+    users = all_users['Users']
+    print(f"[INFO] Found {len(users)} total users in Identity Center")
+    
+    # Create user mapping for all users
+    user_mappings = []
+    for i, user in enumerate(users, 1):
+        user_id = user.get('UserId', '')
+        username = user.get('UserName', '')
+        display_name = user.get('DisplayName', '')
+        
+        # Get email from user attributes
+        emails = user.get('Emails', [])
+        email = emails[0].get('Value', '') if emails else ''
+        
+        print(f"[PROGRESS] Processing user {i}/{len(users)}: {username or user_id}")
+        
+        friendly_name = username or display_name or email or f"User-{user_id[:8]}"
+        
+        user_mappings.append({
+            'PrincipalId': user_id,
+            'Username': username,
+            'DisplayName': display_name,
+            'Email': email,
+            'FriendlyName': friendly_name
+        })
+    
+    # Write user mapping CSV
+    fieldnames = ['PrincipalId', 'Username', 'DisplayName', 'Email', 'FriendlyName']
+    
+    with open(output_file, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(user_mappings)
+    
+    print(f"[SUCCESS] Created user mapping file with ALL users: {output_file}")
+    print(f"[INFO] Mapped {len(user_mappings)} users")
+
 def main():
     parser = argparse.ArgumentParser(description="Create user mapping from Identity Center UUIDs to usernames")
     parser.add_argument("--profile", help="AWS profile to use")
     parser.add_argument("--input", default="identity_center_assignments.csv", help="Input Identity Center assignments CSV")
     parser.add_argument("--output", default="user_mapping.csv", help="Output user mapping CSV")
+    parser.add_argument("--all-users", action="store_true", help="Include all Identity Center users, not just those with assignments")
     args = parser.parse_args()
     
     print(f"[INFO] Creating user mapping using profile: {args.profile or 'default'}")
     
-    create_user_mapping_file(args.input, args.output, args.profile)
+    if args.all_users:
+        print(f"[INFO] Mode: ALL Identity Center users (not just those with assignments)")
+    else:
+        print(f"[INFO] Mode: Only users with AWS account assignments")
+    
+    if args.all_users:
+        create_all_users_mapping(args.output, args.profile)
+    else:
+        create_user_mapping_file(args.input, args.output, args.profile)
 
 if __name__ == "__main__":
     main()
