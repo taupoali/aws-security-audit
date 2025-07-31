@@ -147,12 +147,16 @@ def create_user_mapping_file(identity_center_file, output_file, profile=None):
     # Write user mapping CSV
     fieldnames = ['PrincipalId', 'Username', 'DisplayName', 'Email', 'FriendlyName']
     
-    with open(output_file, 'w', newline='', encoding='utf-8') as f:
+    from pathlib import Path
+    Path('data_collected').mkdir(exist_ok=True)
+    output_path = f"data_collected/{output_file}" if not output_file.startswith('data_collected') else output_file
+    
+    with open(output_path, 'w', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(user_mappings)
     
-    print(f"[SUCCESS] Created user mapping file: {output_file}")
+    print(f"[SUCCESS] Created user mapping file: {output_path}")
     print(f"[INFO] Mapped {len(user_mappings)} users")
 
 def create_all_users_mapping(output_file, profile=None):
@@ -203,19 +207,23 @@ def create_all_users_mapping(output_file, profile=None):
     # Write user mapping CSV
     fieldnames = ['PrincipalId', 'Username', 'DisplayName', 'Email', 'FriendlyName']
     
-    with open(output_file, 'w', newline='', encoding='utf-8') as f:
+    from pathlib import Path
+    Path('data_collected').mkdir(exist_ok=True)
+    output_path = f"data_collected/{output_file}" if not output_file.startswith('data_collected') else output_file
+    
+    with open(output_path, 'w', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(user_mappings)
     
-    print(f"[SUCCESS] Created user mapping file with ALL users: {output_file}")
+    print(f"[SUCCESS] Created user mapping file with ALL users: {output_path}")
     print(f"[INFO] Mapped {len(user_mappings)} users")
 
 def main():
     parser = argparse.ArgumentParser(description="Create user mapping from Identity Center UUIDs to usernames")
     parser.add_argument("--profile", help="AWS profile to use")
     parser.add_argument("--input", default="identity_center_assignments.csv", help="Input Identity Center assignments CSV")
-    parser.add_argument("--output", default="user_mapping.csv", help="Output user mapping CSV")
+    parser.add_argument("--output", default="identity_center_user_mapping.csv", help="Output user mapping CSV")
     parser.add_argument("--all-users", action="store_true", help="Include all Identity Center users, not just those with assignments")
     args = parser.parse_args()
     
