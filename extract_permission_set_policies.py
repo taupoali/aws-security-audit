@@ -20,9 +20,9 @@ def run_aws_command(command, profile=None):
     except json.JSONDecodeError:
         return None
 
-def get_sso_instance():
+def get_sso_instance(profile=None):
     """Get SSO instance ID and Identity Store ID"""
-    result = run_aws_command("aws sso-admin list-instances")
+    result = run_aws_command("aws sso-admin list-instances", profile)
     if result and 'Instances' in result and len(result['Instances']) > 0:
         instance = result['Instances'][0]
         return instance['InstanceArn'], instance['IdentityStoreId']
@@ -138,7 +138,7 @@ def main():
     print("=== Permission Set Policy Extraction ===")
     
     # Get SSO instance
-    instance_arn, identity_store_id = get_sso_instance()
+    instance_arn, identity_store_id = get_sso_instance(args.profile)
     if not instance_arn:
         print("Failed to get SSO instance")
         return
