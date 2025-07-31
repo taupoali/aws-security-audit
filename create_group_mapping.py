@@ -4,10 +4,14 @@ import subprocess
 import json
 import csv
 import sys
+import argparse
 from pathlib import Path
 
-def run_aws_command(command):
+def run_aws_command(command, profile=None):
     """Run AWS CLI command and return JSON output"""
+    if profile:
+        command += f" --profile {profile}"
+    
     try:
         result = subprocess.run(command, shell=True, capture_output=True, text=True, check=True)
         return json.loads(result.stdout)
@@ -20,17 +24,17 @@ def run_aws_command(command):
         print(f"Output: {result.stdout}")
         return None
 
-def get_identity_store_id():
+def get_identity_store_id(profile=None):
     """Get the Identity Store ID"""
     print("Getting Identity Store ID...")
-    result = run_aws_command("aws sso-admin list-instances")
+    result = run_aws_command("aws sso-admin list-instances", profile)
     if result and 'Instances' in result and len(result['Instances']) > 0:
         identity_store_id = result['Instances'][0]['IdentityStoreId']
         print(f"Found Identity Store ID: {identity_store_id}")
         return identity_store_id
     return None
 
-def get_all_groups(identity_store_id):
+def get_all_groups(identity_store_id, profile=None):
     """Get all groups from Identity Center"""
     print("Fetching all groups...")
     groups = []
@@ -41,7 +45,7 @@ def get_all_groups(identity_store_id):
         if next_token:
             cmd += f" --next-token {next_token}"
             
-        result = run_aws_command(cmd)
+        result = run_aws_command(cmd, profile)
         if not result:
             break
             
@@ -53,7 +57,7 @@ def get_all_groups(identity_store_id):
     print(f"Found {len(groups)} groups")
     return groups
 
-def get_group_memberships(identity_store_id, group_id):
+def get_group_memberships(identity_store_id, group_id, profile=None):
     """Get all members of a specific group"""
     members = []
     next_token = None
@@ -63,7 +67,7 @@ def get_group_memberships(identity_store_id, group_id):
         if next_token:
             cmd += f" --next-token {next_token}"
             
-        result = run_aws_command(cmd)
+        result = run_aws_command(cmd, profile)
         if not result:
             break
             
@@ -74,10 +78,10 @@ def get_group_memberships(identity_store_id, group_id):
     
     return members
 
-def get_user_details(identity_store_id, user_id):
+def get_user_details(identity_store_id, user_id, profile=None):
     """Get user details by ID"""
     cmd = f"aws identitystore describe-user --identity-store-id {identity_store_id} --user-id {user_id}"
-    result = run_aws_command(cmd)
+    result = run_aws_command(cmd, profile)
     if result:
         return result.get('UserName', 'Unknown'), result.get('DisplayName', 'Unknown')
     return 'Unknown', 'Unknown'
@@ -99,10 +103,16 @@ def load_identity_center_assignments():
     return assignments
 
 def main():
+    parser = argparse.ArgumentParser(description='Map Identity Center groups to members')
+    parser.add_argument('--profile', help='AWS profile to use')
+    args = parser.parse_args()
+    
     print("=== Identity Center Group Mapping ===")
+    if args.profile:
+        print(f"Using AWS profile: {args.profile}")
     
     # Get Identity Store ID
-    identity_store_id = get_identity_store_id()
+    identity_store_id = get_identity_store_id(args.profile)
     if not identity_store_id:
         print("Failed to get Identity Store ID")
         sys.exit(1)
@@ -117,7 +127,7 @@ def main():
     print(f"Found {len(assigned_groups)} groups with assignments")
     
     # Get all groups
-    all_groups = get_all_groups(identity_store_id)
+    all_groups = get_all_groups(identity_store_id, args.profile)
     
     # Create group mapping
     group_mapping = []
@@ -130,7 +140,7 @@ def main():
         print(f"Processing group {i}/{len(all_groups)}: {group_name}")
         
         # Get group memberships
-        memberships = get_group_memberships(identity_store_id, group_id)
+        memberships = get_group_memberships(identity_store_id, group_id, args.profile)
         
         # Get user details for each member
         members = []
@@ -139,7 +149,7 @@ def main():
             
             # Use cache to avoid repeated API calls
             if member_id not in user_cache:
-                username, display_name = get_user_details(identity_store_id, member_id)
+                username, display_name = get_user_details(identity_store_id, member_id, args.profile)
                 user_cache[member_id] = {'username': username, 'display_name': display_name}
             
             user_info = user_cache[member_id]
