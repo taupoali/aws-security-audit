@@ -17,8 +17,8 @@ def load_user_mappings():
     with open(user_file, 'r', newline='', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         for row in reader:
-            users[row['UserId']] = {
-                'username': row['UserName'],
+            users[row['PrincipalId']] = {
+                'username': row['Username'],
                 'display_name': row['DisplayName']
             }
     
