@@ -92,8 +92,8 @@ def get_user_roles(user_id, assignments, group_members):
     for assignment in assignments:
         if assignment['PrincipalType'] == 'USER' and assignment['PrincipalId'] == user_id:
             user_roles.append({
-                'account_id': assignment['TargetId'],
-                'role_name': assignment['PermissionSetName'],
+                'account_id': assignment.get('TargetId', assignment.get('AccountId', '')),
+                'role_name': assignment.get('PermissionSetName', assignment.get('PermissionSet', '')),
                 'assignment_type': 'Direct'
             })
     
@@ -103,8 +103,8 @@ def get_user_roles(user_id, assignments, group_members):
             for assignment in assignments:
                 if assignment['PrincipalType'] == 'GROUP' and assignment['PrincipalId'] == group_id:
                     user_roles.append({
-                        'account_id': assignment['TargetId'],
-                        'role_name': assignment['PermissionSetName'],
+                        'account_id': assignment.get('TargetId', assignment.get('AccountId', '')),
+                        'role_name': assignment.get('PermissionSetName', assignment.get('PermissionSet', '')),
                         'assignment_type': f'Group: {group_id}'
                     })
     
