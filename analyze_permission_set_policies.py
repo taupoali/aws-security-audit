@@ -176,7 +176,7 @@ def main():
                     'RiskLevel': risk_level,
                     'RiskReasons': '; '.join(risk_reasons),
                     'StatementCount': len(policy_doc.get('Statement', [])),
-                    'PolicyDocument': json.dumps(policy_doc, indent=2)
+                    'PolicyDocument': json.dumps(policy_doc, separators=(',', ':'))
                 })
                 
                 print(f"  Risk Level: {risk_level}")
