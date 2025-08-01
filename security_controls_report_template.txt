@@ -1,0 +1,233 @@
+# SECTION 4: SECURITY CONTROLS, LOGGING, AND MONITORING
+
+## 4.1 SERVICE CONTROL POLICIES (SCPs) ASSESSMENT
+
+### 4.1.1 SCP Implementation Overview
+[Insert summary from scp_findings.csv]
+- **Total SCPs Analyzed**: [Count from CSV]
+- **Organizational Units Covered**: [Count from CSV]
+- **Policy Compliance Status**: [Overall assessment]
+
+### 4.1.2 SCP Findings Summary
+[Filter scp_findings.csv by severity/risk level]
+
+**Critical SCP Issues**:
+[Insert table with columns: PolicyName, OrganizationalUnit, Finding, Recommendation]
+
+**High Priority SCP Issues**:
+[Insert table with columns: PolicyName, OrganizationalUnit, Finding, Recommendation]
+
+### 4.1.3 SCP Effectiveness Analysis
+- **Overly Permissive Policies**: [Count and list]
+- **Overly Restrictive Policies**: [Count and list]
+- **Missing Security Controls**: [List gaps]
+- **Best Practice Adherence**: [Assessment]
+
+### 4.1.4 SCP Recommendations
+1. **Immediate Actions**:
+   - [List critical SCP fixes from CSV]
+2. **Short-term Improvements**:
+   - [List high-priority recommendations]
+3. **Long-term Strategy**:
+   - [List strategic SCP improvements]
+
+---
+
+## 4.2 LOGGING PRACTICES ASSESSMENT
+
+### 4.2.1 Logging Coverage Overview
+[Insert summary from logging_findings.csv]
+- **Accounts with CloudTrail**: [Count/Percentage]
+- **Regions with Logging**: [Count]
+- **Log Retention Compliance**: [Assessment]
+- **Overall Logging Score**: [If available]
+
+### 4.2.2 CloudTrail Analysis
+[Filter logging_findings.csv for CloudTrail entries]
+
+**CloudTrail Status by Account**:
+[Insert table with columns: AccountId, CloudTrailEnabled, MultiRegion, LogFileValidation, Status]
+
+**CloudTrail Gaps Identified**:
+- Accounts without CloudTrail: [List]
+- Missing multi-region trails: [List]
+- Log file validation disabled: [List]
+
+### 4.2.3 CloudWatch Logs Analysis
+[Filter logging_findings.csv for CloudWatch entries]
+
+**Log Groups Coverage**:
+- **Total Log Groups**: [Count]
+- **Retention Policy Compliance**: [Assessment]
+- **Missing Critical Logs**: [List]
+
+### 4.2.4 AWS Config Analysis
+[Filter logging_findings.csv for Config entries]
+
+**Configuration Recording Status**:
+- **Accounts with Config**: [Count/Percentage]
+- **Resource Coverage**: [Assessment]
+- **Compliance Rules Active**: [Count]
+
+### 4.2.5 VPC Flow Logs Analysis
+[Filter logging_findings.csv for VPC Flow Logs]
+
+**Flow Logs Coverage**:
+- **VPCs with Flow Logs**: [Count/Percentage]
+- **Missing Flow Logs**: [List critical VPCs]
+- **Log Destination Analysis**: [S3/CloudWatch breakdown]
+
+### 4.2.6 Logging Recommendations
+**Critical Logging Gaps**:
+1. [List from logging_findings.csv - critical severity]
+
+**High Priority Improvements**:
+1. [List from logging_findings.csv - high severity]
+
+**Best Practice Implementations**:
+1. [List recommended logging enhancements]
+
+---
+
+## 4.3 MONITORING AND ALERTING ASSESSMENT
+
+### 4.3.1 Monitoring Overview
+[Insert summary from monitoring_findings.csv]
+- **GuardDuty Coverage**: [Accounts/Regions enabled]
+- **Security Hub Status**: [Enabled accounts]
+- **CloudWatch Alarms**: [Total count across accounts]
+- **Monitoring Maturity**: [Overall assessment]
+
+### 4.3.2 Amazon GuardDuty Analysis
+[Filter monitoring_findings.csv for GuardDuty entries]
+
+**GuardDuty Status by Account**:
+[Insert table with columns: AccountId, GuardDutyEnabled, FindingsCount, HighSeverityFindings, Status]
+
+**GuardDuty Findings Summary**:
+- **High Severity Findings**: [Count and brief description]
+- **Medium Severity Findings**: [Count]
+- **Accounts Not Protected**: [List accounts without GuardDuty]
+
+### 4.3.3 AWS Security Hub Analysis
+[Filter monitoring_findings.csv for Security Hub entries]
+
+**Security Hub Status**:
+- **Enabled Accounts**: [Count/List]
+- **Security Standards Active**: [List standards]
+- **Failed Findings**: [Count by severity]
+- **Compliance Score**: [If available]
+
+### 4.3.4 CloudWatch Alarms Analysis
+[Filter monitoring_findings.csv for CloudWatch entries]
+
+**Alarm Coverage Assessment**:
+- **Total Alarms Configured**: [Count]
+- **Critical Resource Coverage**: [Assessment]
+- **Missing Recommended Alarms**: [List]
+
+**Alarm Categories**:
+- **Security Alarms**: [Count]
+- **Performance Alarms**: [Count]
+- **Cost Alarms**: [Count]
+- **Custom Alarms**: [Count]
+
+### 4.3.5 Monitoring Gaps Identified
+[Use monitoring_recommendations.csv]
+
+**Critical Monitoring Gaps**:
+1. [List critical recommendations]
+
+**Missing Security Monitoring**:
+1. [List security-specific gaps]
+
+**Alerting Improvements Needed**:
+1. [List alerting recommendations]
+
+### 4.3.6 Monitoring Recommendations
+[From monitoring_recommendations.csv organized by priority]
+
+**Immediate Actions (Critical)**:
+1. [List critical monitoring fixes]
+
+**Short-term Improvements (High)**:
+1. [List high-priority recommendations]
+
+**Long-term Strategy (Medium)**:
+1. [List strategic monitoring improvements]
+
+---
+
+## 4.4 AWS CONTROL TOWER ASSESSMENT
+
+### 4.4.1 Control Tower Status
+**Assessment Status**: ❌ **INCOMPLETE**
+**Reason**: Insufficient permissions to access Control Tower APIs
+
+### 4.4.2 Impact on Assessment
+- **Guardrails Analysis**: Not performed
+- **Drift Detection**: Not assessed  
+- **Compliance Controls**: Not evaluated
+- **Account Factory Review**: Not completed
+
+### 4.4.3 Recommendations for Control Tower
+1. **Grant Required Permissions**:
+   - `controltower:ListEnabledControls`
+   - `controltower:GetControlOperation`
+   - `controltower:ListLandingZones`
+
+2. **Future Assessment Requirements**:
+   - Complete Control Tower configuration review
+   - Assess enabled guardrails effectiveness
+   - Evaluate drift detection and remediation
+   - Review account provisioning controls
+
+---
+
+## 4.5 SECURITY CONTROLS SUMMARY
+
+### 4.5.1 Overall Security Controls Maturity
+[Create summary table]
+| Control Category | Status | Coverage | Risk Level |
+|------------------|--------|----------|------------|
+| Service Control Policies | [Status] | [%] | [Risk] |
+| CloudTrail Logging | [Status] | [%] | [Risk] |
+| CloudWatch Monitoring | [Status] | [%] | [Risk] |
+| GuardDuty Protection | [Status] | [%] | [Risk] |
+| Security Hub | [Status] | [%] | [Risk] |
+| Control Tower | INCOMPLETE | N/A | UNKNOWN |
+
+### 4.5.2 Critical Security Gaps
+1. [List top 5 critical gaps across all controls]
+
+### 4.5.3 Risk Assessment
+**High Risk Areas**:
+- [List areas with inadequate controls]
+
+**Medium Risk Areas**:
+- [List areas needing improvement]
+
+**Well-Controlled Areas**:
+- [List areas with good security controls]
+
+### 4.5.4 Prioritized Action Plan
+**Phase 1 (Immediate - 0-30 days)**:
+1. [Critical fixes from all control areas]
+
+**Phase 2 (Short-term - 1-3 months)**:
+2. [High-priority improvements]
+
+**Phase 3 (Long-term - 3-6 months)**:
+3. [Strategic enhancements and Control Tower assessment]
+
+---
+
+## TEMPLATE USAGE INSTRUCTIONS
+
+1. **Insert SCP Data**: Use `scp_findings.csv` to populate Section 4.1
+2. **Insert Logging Data**: Use `logging_findings.csv` to populate Section 4.2
+3. **Insert Monitoring Data**: Use `monitoring_findings.csv` and `monitoring_recommendations.csv` for Section 4.3
+4. **Calculate Percentages**: Determine coverage percentages from your data
+5. **Prioritize Findings**: Sort recommendations by severity/risk level
+6. **Add Executive Summary**: Create high-level assessment for each control area
+7. **Include Charts**: Consider adding charts for coverage percentages and risk distribution
