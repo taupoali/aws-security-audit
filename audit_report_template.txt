@@ -1,0 +1,166 @@
+# AWS Security Audit Report Template
+
+## EXECUTIVE SUMMARY
+
+### Key Findings Overview
+[Insert table from audit_executive_summary.csv here]
+
+### Risk Assessment Summary
+- **Critical Risk Items**: [Count from executive summary]
+- **High Risk Items**: [Count from executive summary] 
+- **Least Privilege Compliance Rate**: [Percentage from executive summary]
+- **Overall Security Posture**: [Based on findings]
+
+---
+
+## 1. LEAST PRIVILEGE ANALYSIS
+
+### 1.1 Permission Set Compliance Overview
+**Total Permission Sets Analyzed**: [Number]
+**Non-Compliant Permission Sets**: [Number]
+
+### 1.2 Critical Risk Permission Sets
+[Filter audit_least_privilege_compliance.csv for RiskLevel = "CRITICAL"]
+- Insert table with columns: PermissionSetName, AccountCount, ViolationDetails
+
+### 1.3 High Risk Permission Sets  
+[Filter audit_least_privilege_compliance.csv for RiskLevel = "HIGH"]
+- Insert table with columns: PermissionSetName, AccountCount, ViolationDetails
+
+### 1.4 Recommendations
+- Review and remediate CRITICAL risk permission sets immediately
+- Implement principle of least privilege for HIGH risk items
+- Regular access reviews for overprivileged permission sets
+
+---
+
+## 2. ELEVATED PRIVILEGES ANALYSIS
+
+### 2.1 Users with Elevated Access
+**Total Users with Elevated Privileges**: [Count unique users from audit_elevated_privileges.csv]
+
+### 2.2 Critical Access Assignments
+[Filter audit_elevated_privileges.csv for users with CRITICAL permission sets]
+- Insert table with columns: Username, DisplayName, PermissionSetName, AccountId
+
+### 2.3 High Risk Access Assignments
+[Filter audit_elevated_privileges.csv for users with HIGH risk permission sets]
+- Insert table with columns: Username, DisplayName, PermissionSetName, AccountId
+
+### 2.4 Recommendations
+- Validate business justification for all elevated access
+- Implement regular access certification process
+- Consider time-limited access for administrative functions
+
+---
+
+## 3. CROSS-ACCOUNT ACCESS ANALYSIS
+
+### 3.1 Multi-Account Access Overview
+**Users with Cross-Account Access**: [Count from audit_cross_account_access.csv]
+**Average Accounts per User**: [Calculate from data]
+
+### 3.2 Highest Risk Cross-Account Users
+[Sort audit_cross_account_access.csv by AccountCount, show top 10]
+- Insert table with columns: Username, DisplayName, AccountCount, Accounts, PermissionSets
+
+### 3.3 Cross-Account Access Patterns
+- Users with access to 5+ accounts: [Count]
+- Users with access to 10+ accounts: [Count]
+- Most common permission sets across accounts: [Analysis]
+
+### 3.4 Recommendations
+- Review business justification for extensive cross-account access
+- Implement account-specific roles where possible
+- Monitor cross-account activity through CloudTrail
+
+---
+
+## 4. PRIVILEGE ESCALATION ASSESSMENT
+
+### 4.1 Escalation Chain Analysis
+**Finding**: No privilege escalation chains detected across all 27 accounts.
+
+**Security Posture**: EXCELLENT
+- All roles trust only AWS SSO (SAML provider)
+- No role-to-role assumption capabilities
+- Centralized access control through Identity Center
+
+### 4.2 Direct Administrative Access
+[From user_escalation_analysis.csv - users with direct admin roles]
+- Insert table showing users with direct administrative permission sets
+
+---
+
+## 5. RECOMMENDATIONS AND REMEDIATION
+
+### 5.1 Immediate Actions (Critical)
+1. **Review CRITICAL risk permission sets**
+   - [List specific permission sets from audit_least_privilege_compliance.csv]
+   - Validate business requirements
+   - Implement least privilege alternatives
+
+2. **Validate elevated user access**
+   - [List users with CRITICAL access from audit_elevated_privileges.csv]
+   - Confirm ongoing business need
+   - Implement regular access reviews
+
+### 5.2 Short-term Actions (High Priority)
+1. **Address HIGH risk permission sets**
+2. **Implement access certification process**
+3. **Review cross-account access patterns**
+
+### 5.3 Long-term Actions (Medium Priority)
+1. **Establish regular audit schedule**
+2. **Implement automated compliance monitoring**
+3. **Develop least privilege policy framework**
+
+---
+
+## 6. COMPLIANCE STATUS
+
+### 6.1 Audit Requirements Coverage
+✅ **Account Management**: Statistics and summaries completed
+✅ **IAM Analysis**: Cross-account access and permissions reviewed  
+✅ **Privilege Escalation**: No escalation chains found (positive finding)
+✅ **Least Privilege**: Permission sets analyzed and risk-rated
+✅ **Elevated Privileges**: Users with high-risk access identified
+✅ **Risk Analysis**: Comprehensive risk scoring completed
+
+### 6.2 Overall Assessment
+**Security Architecture**: STRONG (SSO-only, no role chaining)
+**Least Privilege Compliance**: [Percentage]% 
+**Risk Level**: [Based on critical/high findings]
+
+---
+
+## APPENDICES
+
+### Appendix A: Complete Least Privilege Analysis
+[Insert full audit_least_privilege_compliance.csv as table]
+
+### Appendix B: Complete Elevated Privileges List  
+[Insert full audit_elevated_privileges.csv as table]
+
+### Appendix C: Complete Cross-Account Access Data
+[Insert full audit_cross_account_access.csv as table]
+
+### Appendix D: Technical Methodology
+- Tools used: AWS CLI, Identity Center APIs
+- Accounts analyzed: 27
+- Data collection period: [Date range]
+- Analysis methodology: Risk-based assessment with automated policy analysis
+
+---
+
+## TEMPLATE USAGE INSTRUCTIONS
+
+1. **Copy this template into Microsoft Word**
+2. **Apply Word styles**: Use Heading 1, Heading 2, etc. for sections
+3. **Insert CSV data**: 
+   - Use Insert → Table → From File to import CSV files
+   - Filter data before importing (e.g., only CRITICAL/HIGH risks)
+4. **Add charts**: Create charts in Excel first, then copy to Word
+5. **Format tables**: Apply table styles for professional appearance
+6. **Replace bracketed placeholders**: [Count], [Number], etc. with actual values
+7. **Add executive summary metrics**: Use audit_executive_summary.csv for key numbers
