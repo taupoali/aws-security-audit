@@ -1,0 +1,286 @@
+# SECTION 3: SERVICE USAGE AND INTERNET-FACING SERVICES
+
+## 3.1 AWS SERVICE INVENTORY OVERVIEW
+
+### 3.1.1 Service Usage Summary
+[Insert summary from aws_inventory.csv]
+- **Total AWS Accounts Analyzed**: [Count unique AccountId from CSV]
+- **Total Services Discovered**: [Count unique ServiceName from CSV]
+- **Total Resources Identified**: [Total row count from CSV]
+- **Regions Covered**: [Count unique Region from CSV]
+
+### 3.1.2 Service Distribution by Account
+[Group aws_inventory.csv by AccountId and ServiceName]
+
+**Top 10 Accounts by Resource Count**:
+[Insert table with columns: AccountId, ResourceCount, TopServices, Region]
+
+**Service Usage Across Organization**:
+[Insert table with columns: ServiceName, AccountCount, ResourceCount, MostUsedRegion]
+
+### 3.1.3 Regional Service Distribution
+[Group aws_inventory.csv by Region]
+
+**Service Deployment by Region**:
+[Insert table with columns: Region, ServiceCount, ResourceCount, TopServices]
+
+**Multi-Region Services**:
+- Services deployed across 3+ regions: [List]
+- Single-region concentrated services: [List]
+
+### 3.1.4 Service Categories Analysis
+[Categorize services from aws_inventory.csv]
+
+**Compute Services**:
+- EC2, Lambda, ECS, EKS: [Count resources]
+
+**Storage Services**:
+- S3, EBS, EFS: [Count resources]
+
+**Database Services**:
+- RDS, DynamoDB, ElastiCache: [Count resources]
+
+**Networking Services**:
+- VPC, CloudFront, ELB: [Count resources]
+
+**Security Services**:
+- IAM, KMS, Secrets Manager: [Count resources]
+
+---
+
+## 3.2 INTERNET-FACING SERVICES IDENTIFICATION
+
+### 3.2.1 Public Resource Overview
+[Insert summary from public_resources_analysis.csv]
+- **Total Public Resources**: [Count from CSV]
+- **High-Risk Public Resources**: [Count where RiskLevel = HIGH/CRITICAL]
+- **Accounts with Public Resources**: [Count unique AccountId]
+- **Public Resource Types**: [Count unique ResourceType]
+
+### 3.2.2 Public Resources by Service Type
+[Group public_resources_analysis.csv by ResourceType]
+
+**S3 Buckets - Public Access**:
+[Filter for ResourceType = S3]
+[Insert table with columns: AccountId, ResourceName, PublicAccessType, RiskLevel, Recommendation]
+
+**EC2 Instances - Internet Accessible**:
+[Filter for ResourceType = EC2]
+[Insert table with columns: AccountId, InstanceId, PublicIP, SecurityGroups, RiskLevel]
+
+**Load Balancers - Internet-Facing**:
+[Filter for ResourceType = ELB/ALB/NLB]
+[Insert table with columns: AccountId, LoadBalancerName, Scheme, Listeners, RiskLevel]
+
+**CloudFront Distributions**:
+[Filter for ResourceType = CloudFront]
+[Insert table with columns: AccountId, DistributionId, Origins, CacheBehaviors, RiskLevel]
+
+**RDS Instances - Public Access**:
+[Filter for ResourceType = RDS]
+[Insert table with columns: AccountId, DBInstanceId, PubliclyAccessible, SecurityGroups, RiskLevel]
+
+**API Gateway - Public APIs**:
+[Filter for ResourceType = API Gateway]
+[Insert table with columns: AccountId, APIName, EndpointType, AuthType, RiskLevel]
+
+### 3.2.3 Public Access Patterns
+[Analyze patterns from public_resources_analysis.csv]
+
+**Intentional Public Services**:
+- Web applications and CDNs: [Count]
+- Public APIs and endpoints: [Count]
+- Static website hosting: [Count]
+
+**Potentially Unintended Public Access**:
+- Database instances with public access: [Count]
+- Storage buckets with public read/write: [Count]
+- Development/test resources exposed: [Count]
+
+---
+
+## 3.3 RISK POSTURE ASSESSMENT
+
+### 3.3.1 Internet-Facing Risk Summary
+[Use RiskLevel column from public_resources_analysis.csv]
+
+**Risk Distribution**:
+- **Critical Risk Resources**: [Count where RiskLevel = CRITICAL]
+- **High Risk Resources**: [Count where RiskLevel = HIGH]
+- **Medium Risk Resources**: [Count where RiskLevel = MEDIUM]
+- **Low Risk Resources**: [Count where RiskLevel = LOW]
+
+### 3.3.2 Critical Risk Public Resources
+[Filter public_resources_analysis.csv for RiskLevel = CRITICAL]
+
+**Immediate Attention Required**:
+[Insert table with columns: AccountId, ResourceType, ResourceName, RiskReason, ImmediateAction]
+
+### 3.3.3 High Risk Public Resources
+[Filter public_resources_analysis.csv for RiskLevel = HIGH]
+
+**High Priority Remediation**:
+[Insert table with columns: AccountId, ResourceType, ResourceName, RiskReason, RecommendedAction]
+
+### 3.3.4 Security Configuration Analysis
+[From check_public_resources.py output if available]
+
+**Security Group Analysis**:
+- Overly permissive security groups: [Count]
+- 0.0.0.0/0 inbound rules: [Count]
+- Unrestricted port access: [List common ports]
+
+**Network ACL Analysis**:
+- Default NACLs in use: [Count]
+- Custom restrictive NACLs: [Count]
+
+**SSL/TLS Configuration**:
+- Resources without SSL/TLS: [Count]
+- Outdated SSL/TLS versions: [Count]
+
+---
+
+## 3.4 MITIGATION STRATEGIES
+
+### 3.4.1 Immediate Mitigation Actions (Critical)
+[Based on CRITICAL findings from public_resources_analysis.csv]
+
+1. **Secure Critical Public Resources**:
+   - [List specific resources requiring immediate action]
+   - Timeline: 24-48 hours
+
+2. **Remove Unintended Public Access**:
+   - [List accidentally exposed resources]
+   - Timeline: 1 week
+
+### 3.4.2 Short-term Mitigation (High Priority)
+[Based on HIGH findings from public_resources_analysis.csv]
+
+1. **Implement Access Controls**:
+   - [List resources needing access restrictions]
+   - Timeline: 2-4 weeks
+
+2. **Security Configuration Hardening**:
+   - [List security group and NACL improvements]
+   - Timeline: 1 month
+
+### 3.4.3 Long-term Security Strategy
+[Based on MEDIUM/LOW findings and best practices]
+
+1. **Public Resource Governance**:
+   - Implement approval process for public resources
+   - Regular public resource audits
+   - Automated compliance monitoring
+
+2. **Network Security Enhancements**:
+   - WAF implementation for web applications
+   - DDoS protection for critical services
+   - Network segmentation improvements
+
+### 3.4.4 Preventive Measures
+1. **Policy Implementation**:
+   - SCPs to prevent unintended public access
+   - IAM policies restricting public resource creation
+   - Automated remediation for policy violations
+
+2. **Monitoring and Alerting**:
+   - CloudWatch alarms for new public resources
+   - Config rules for compliance monitoring
+   - Security Hub integration for centralized visibility
+
+---
+
+## 3.5 SERVICE INVENTORY COMPLIANCE
+
+### 3.5.1 Service Usage Compliance
+[Analyze aws_inventory.csv against organizational policies]
+
+**Approved Services Usage**:
+- Services within approved list: [Percentage]
+- Unapproved services detected: [List]
+
+**Regional Compliance**:
+- Services in approved regions: [Percentage]
+- Services in non-approved regions: [List]
+
+### 3.5.2 Resource Tagging Compliance
+[If tagging data available in aws_inventory.csv]
+
+**Tagging Statistics**:
+- Resources with required tags: [Percentage]
+- Missing mandatory tags: [Count]
+- Inconsistent tag values: [Count]
+
+### 3.5.3 Cost Optimization Opportunities
+[Based on service inventory analysis]
+
+**Underutilized Resources**:
+- Idle EC2 instances: [Count if available]
+- Unused EBS volumes: [Count if available]
+- Empty S3 buckets: [Count if available]
+
+---
+
+## 3.6 RECOMMENDATIONS AND ACTION PLAN
+
+### 3.6.1 Service Inventory Management
+1. **Implement Service Catalog**:
+   - Standardize approved services list
+   - Automate service deployment through catalog
+   - Regular service usage reviews
+
+2. **Resource Lifecycle Management**:
+   - Automated resource tagging
+   - Resource cleanup policies
+   - Cost optimization reviews
+
+### 3.6.2 Internet-Facing Security
+1. **Public Resource Governance**:
+   - Mandatory security review for public resources
+   - Automated public access detection
+   - Regular security assessments
+
+2. **Network Security Controls**:
+   - Implement least privilege network access
+   - Deploy WAF for web applications
+   - Enable DDoS protection
+
+### 3.6.3 Monitoring and Compliance
+1. **Continuous Monitoring**:
+   - Real-time public resource detection
+   - Compliance dashboard implementation
+   - Automated remediation workflows
+
+2. **Regular Assessments**:
+   - Quarterly service inventory reviews
+   - Monthly public resource audits
+   - Annual security posture assessments
+
+---
+
+## TEMPLATE USAGE INSTRUCTIONS
+
+### Data Sources Required:
+1. **aws_inventory.csv** - Complete service inventory
+   - Generated by: `aws_service_inventory.py --accounts [list] --profiles [list] --output aws_inventory.csv`
+
+2. **public_resources_analysis.csv** - Public resource analysis
+   - Generated by: `analyze_public_resources.py --inventory aws_inventory.csv`
+
+3. **check_public_resources.py output** - Detailed public resource security
+   - Generated by: `check_public_resources.py`
+
+### Template Population Steps:
+1. **Import CSV data** using Word's Insert → Table → From File
+2. **Calculate summary statistics** from CSV data (counts, percentages)
+3. **Filter data by risk levels** for prioritized reporting
+4. **Group data by categories** (account, service type, region)
+5. **Add charts/graphs** for visual representation of data
+6. **Replace bracketed placeholders** with actual values from analysis
+
+### Key Metrics to Calculate:
+- Total resources per account/service/region
+- Percentage of public vs private resources
+- Risk level distribution
+- Compliance percentages
+- Top services by usage
