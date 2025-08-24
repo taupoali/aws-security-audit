@@ -165,21 +165,46 @@ def analyze_organization_attack_surface(cross_account_trusts, assignments):
     for trust in cross_account_trusts:
         account_connections[trust['trusted_account']].add(trust['trusting_account'])
     
-    # Multi-hop path detection
+    # Multi-hop path detection with detailed role information
     multi_hop_paths = []
+    
+    # Create detailed trust mapping
+    detailed_trusts = {}
+    for trust in cross_account_trusts:
+        key = f"{trust['trusted_account']}->{trust['trusting_account']}"
+        if key not in detailed_trusts:
+            detailed_trusts[key] = []
+        detailed_trusts[key].append(trust)
+    
     for source_account, direct_targets in account_connections.items():
         for target_account in direct_targets:
             # Check if target account can reach other accounts
             if target_account in account_connections:
                 for final_target in account_connections[target_account]:
                     if final_target != source_account:  # Avoid circular paths
-                        multi_hop_paths.append({
-                            'source_account': source_account,
-                            'intermediate_account': target_account,
-                            'final_account': final_target,
-                            'hop_count': 2,
-                            'risk_level': 'HIGH'
-                        })
+                        
+                        # Get detailed trust information for each hop
+                        hop1_key = f"{source_account}->{target_account}"
+                        hop2_key = f"{target_account}->{final_target}"
+                        
+                        hop1_trusts = detailed_trusts.get(hop1_key, [])
+                        hop2_trusts = detailed_trusts.get(hop2_key, [])
+                        
+                        # Create detailed path for each combination
+                        for hop1_trust in hop1_trusts:
+                            for hop2_trust in hop2_trusts:
+                                multi_hop_paths.append({
+                                    'source_account': source_account,
+                                    'intermediate_account': target_account,
+                                    'final_account': final_target,
+                                    'hop_count': 2,
+                                    'risk_level': 'HIGH',
+                                    'hop1_trusting_role': hop1_trust['trusting_role'],
+                                    'hop1_trusted_principal': hop1_trust['trusted_principal'],
+                                    'hop2_trusting_role': hop2_trust['trusting_role'],
+                                    'hop2_trusted_principal': hop2_trust['trusted_principal'],
+                                    'attack_path': f"Principal in {source_account} → {hop1_trust['trusting_role']} in {target_account} → {hop2_trust['trusting_role']} in {final_target}"
+                                })
     
     # User access breadth analysis
     user_access_breadth = defaultdict(set)
@@ -238,10 +263,10 @@ def main():
             writer.writeheader()
             writer.writerows(escalation_paths)
     
-    # Save multi-hop paths
-    with open('cross_account_multi_hop_paths.csv', 'w', newline='', encoding='utf-8') as f:
+    # Save multi-hop paths with detailed role information
+    with open('cross_account_multi_hop_paths_detailed.csv', 'w', newline='', encoding='utf-8') as f:
         if attack_surface['multi_hop_paths']:
-            writer = csv.DictWriter(f, fieldnames=['source_account', 'intermediate_account', 'final_account', 'hop_count', 'risk_level'])
+            writer = csv.DictWriter(f, fieldnames=['source_account', 'intermediate_account', 'final_account', 'hop_count', 'risk_level', 'hop1_trusting_role', 'hop1_trusted_principal', 'hop2_trusting_role', 'hop2_trusted_principal', 'attack_path'])
             writer.writeheader()
             writer.writerows(attack_surface['multi_hop_paths'])
     
@@ -281,12 +306,29 @@ def main():
         print("✅ GOOD: No multi-hop attack paths detected")
     else:
         print(f"⚠️  RISK: {len(attack_surface['multi_hop_paths'])} multi-hop paths possible")
+        print(f"   Check cross_account_multi_hop_paths_detailed.csv for specific roles to fix")
     
     print(f"\nFiles created:")
-    print(f"- cross_account_trust_relationships.csv")
-    print(f"- cross_account_escalation_paths.csv") 
-    print(f"- cross_account_multi_hop_paths.csv")
-    print(f"- cross_account_high_access_users.csv")
+    print(f"- cross_account_trust_relationships.csv (all cross-account trusts)")
+    print(f"- cross_account_escalation_paths.csv (user escalation paths)") 
+    print(f"- cross_account_multi_hop_paths_detailed.csv (detailed A→B→C paths with roles)")
+    print(f"- cross_account_high_access_users.csv (users with broad access)")
+    
+    # Show remediation guidance
+    if len(cross_account_trusts) > 0:
+        print(f"\n=== Remediation Guidance ===")
+        print(f"To fix cross-account trust relationships:")
+        print(f"1. Review cross_account_trust_relationships.csv")
+        print(f"2. For each trust, evaluate if it's necessary")
+        print(f"3. Remove unnecessary trusts by modifying role trust policies")
+        print(f"4. Replace with Identity Center assignments where possible")
+        
+    if len(attack_surface['multi_hop_paths']) > 0:
+        print(f"\nTo fix multi-hop paths:")
+        print(f"1. Review cross_account_multi_hop_paths_detailed.csv")
+        print(f"2. Focus on 'hop1_trusting_role' and 'hop2_trusting_role' columns")
+        print(f"3. Remove trust policies for these specific roles")
+        print(f"4. Check 'attack_path' column for complete escalation description")
 
 if __name__ == "__main__":
     main()
